@@ -7,10 +7,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Water Monitor"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("Water Monitor"), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -40,9 +37,14 @@ class HomeScreen extends StatelessWidget {
               onTap: () => Navigator.pushNamed(context, '/charts'),
             ),
             CustomButton(
+              label: "View Charts",
+              onTap: () => Navigator.pushNamed(context, '/charts'),
+            ),
+
+            CustomButton(
               label: "About Project",
               onTap: () => Navigator.pushNamed(context, '/about'),
-            ),
+            )
           ],
         ),
       ),
