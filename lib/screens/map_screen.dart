@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/geojson_service.dart';
 import '../services/water_stations_service.dart';
+import 'station_details_screen.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -216,6 +217,19 @@ class _MapScreenState extends State<MapScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => StationDetailsScreen(station: station),
+                ),
+              );
+            },
+            icon: const Icon(Icons.info_outline, size: 16),
+            label: const Text('View Details'),
           ),
           FilledButton.icon(
             onPressed: () {
