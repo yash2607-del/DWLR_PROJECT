@@ -119,22 +119,138 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // Ultra-optimized marker rebuilding with clustering for performance
   void _rebuildMarkersForZoom() {
     if (_waterStations.isEmpty) return;
 
-    final markerWidget = _getMarkerWidget(_currentZoom);
     final markerSize = _getMarkerSize(_currentZoom);
+    List<Marker> newMarkers;
+
+    // Use clustering for better performance at different zoom levels
+    if (_currentZoom < 6.0) {
+      // Show every 20th marker when zoomed out
+      newMarkers = _buildClusteredMarkers(20, markerSize);
+    } else if (_currentZoom < 9.0) {
+      // Show every 5th marker at medium zoom
+      newMarkers = _buildClusteredMarkers(5, markerSize);
+    } else {
+      // Show all markers when zoomed in
+      newMarkers = _buildAllMarkers(markerSize);
+    }
 
     setState(() {
-      _markers = List.generate(_waterStations.length, (index) {
-        return Marker(
-          point: _waterStations[index].position,
+      _markers = newMarkers;
+    });
+  }
+
+  // Build clustered markers for performance
+  List<Marker> _buildClusteredMarkers(int skipFactor, double markerSize) {
+    final clusteredMarkers = <Marker>[];
+    for (int i = 0; i < _waterStations.length; i += skipFactor) {
+      final station = _waterStations[i];
+      clusteredMarkers.add(
+        Marker(
+          point: station.position,
           width: markerSize,
           height: markerSize,
-          child: markerWidget,
-        );
-      });
-    });
+          child: GestureDetector(
+            onTap: () => _showStationModal(station),
+            behavior: HitTestBehavior.opaque,
+            child: _getMarkerWidget(_currentZoom),
+          ),
+        ),
+      );
+    }
+    return clusteredMarkers;
+  }
+
+  // Build all markers for high zoom levels
+  List<Marker> _buildAllMarkers(double markerSize) {
+    final allMarkers = <Marker>[];
+    final markerWidget = _getMarkerWidget(_currentZoom);
+
+    for (final station in _waterStations) {
+      allMarkers.add(
+        Marker(
+          point: station.position,
+          width: markerSize,
+          height: markerSize,
+          child: GestureDetector(
+            onTap: () => _showStationModal(station),
+            behavior: HitTestBehavior.opaque,
+            child: markerWidget,
+          ),
+        ),
+      );
+    }
+    return allMarkers;
+  }
+
+  // Optimized modal for station details
+  void _showStationModal(WaterStation station) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.water_drop, color: Colors.blue, size: 20),
+            SizedBox(width: 8),
+            Text('Station Details', style: TextStyle(fontSize: 18)),
+          ],
+        ),
+        content: SizedBox(
+          width: 280,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailRow('Code:', station.stationCode),
+              const SizedBox(height: 8),
+              _buildDetailRow('Name:', station.stationName),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              _mapController.move(station.position, 12.0);
+              _currentZoom = 12.0;
+              _rebuildMarkersForZoom();
+              Navigator.pop(context);
+            },
+            icon: const Icon(Icons.center_focus_strong, size: 16),
+            label: const Text('Focus'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Optimized detail row widget
+  Widget _buildDetailRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 60,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.grey,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        Expanded(child: Text(value, style: const TextStyle(fontSize: 14))),
+      ],
+    );
   }
 
   Future<void> _initializeMarkers() async {
@@ -145,31 +261,22 @@ class _MapScreenState extends State<MapScreen> {
     try {
       _waterStations = await WaterStationsService.loadWaterStations();
 
-      // Generate markers with current zoom level sizing
+      // Generate markers efficiently with optimized approach
       _rebuildMarkersForZoom();
 
       setState(() {
         _markersLoading = false;
       });
 
-      print('Created ${_markers.length} water station markers');
+      print('Created ${_markers.length} optimized water station markers');
 
-      // Show a brief success message
+      // Show success message
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ Successfully loaded ${_markers.length} water monitoring stations across India',
-            ),
-            duration: const Duration(seconds: 3),
+          const SnackBar(
+            content: Text('✅ Successfully loaded water monitoring stations'),
+            duration: Duration(seconds: 2),
             backgroundColor: Colors.green,
-            action: SnackBarAction(
-              label: 'Dismiss',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
           ),
         );
       }
@@ -228,7 +335,7 @@ class _MapScreenState extends State<MapScreen> {
                   ? "Loading 31,574 water monitoring stations..."
                   : _markers.isEmpty
                   ? "Map ready - stations will load shortly"
-                  : "Showing ${_markers.length} water monitoring stations across India (Zoom: ${_currentZoom.toStringAsFixed(1)})",
+                  : "Showing ${_markers.length}/31574 water monitoring stations across India (Zoom: ${_currentZoom.toStringAsFixed(1)})",
               style: const TextStyle(fontSize: 16),
               textAlign: TextAlign.center,
             ),
