@@ -17,9 +17,58 @@ class _MapScreenState extends State<MapScreen> {
   // Center point for India - Adjusted to show more of eastern India and islands
   final LatLng _center = const LatLng(20.0, 82.0);
 
-  // List of markers - will be populated with water station coordinates later
+  // Current zoom level tracking
+  double _currentZoom = 4.2;
+
+  // Optimized marker widgets for different zoom levels - create once and reuse
+  static const Widget _smallMarker = SizedBox(
+    width: 1.5,
+    height: 1.5,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: Color(0xFF2196F3),
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
+
+  static const Widget _mediumMarker = SizedBox(
+    width: 3.0,
+    height: 3.0,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: Color(0xFF2196F3),
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
+
+  static const Widget _largeMarker = SizedBox(
+    width: 5.0,
+    height: 5.0,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: Color(0xFF2196F3),
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
+
+  static const Widget _extraLargeMarker = SizedBox(
+    width: 8.0,
+    height: 8.0,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: Color(0xFF2196F3),
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
+
+  // List of markers and water stations data
   List<Marker> _markers = [];
-  bool _isLoading = true;
+  List<WaterStation> _waterStations = [];
+  bool _markersLoading = false;
 
   // India boundary coordinates - will be loaded from GeoJSON
   List<List<LatLng>> _allIndiaBoundaries = [];
@@ -28,36 +77,106 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeMarkers();
     _loadIndiaBoundary();
+    // Don't load markers in initState - wait for boundaries to load first
+  }
+
+  // Get appropriate marker widget based on zoom level
+  Widget _getMarkerWidget(double zoom) {
+    if (zoom < 5.0) {
+      return _smallMarker;
+    } else if (zoom < 8.0) {
+      return _mediumMarker;
+    } else if (zoom < 12.0) {
+      return _largeMarker;
+    } else {
+      return _extraLargeMarker;
+    }
+  }
+
+  // Get marker size values based on zoom level
+  double _getMarkerSize(double zoom) {
+    if (zoom < 5.0) {
+      return 1.5;
+    } else if (zoom < 8.0) {
+      return 3.0;
+    } else if (zoom < 12.0) {
+      return 5.0;
+    } else {
+      return 8.0;
+    }
+  }
+
+  // Handle map events, particularly zoom changes
+  void _onMapEvent(MapEvent mapEvent) {
+    if (mapEvent is MapEventMoveEnd) {
+      final newZoom = _mapController.camera.zoom;
+      if ((newZoom - _currentZoom).abs() > 0.5) {
+        // Only update if significant zoom change
+        _currentZoom = newZoom;
+        _rebuildMarkersForZoom();
+      }
+    }
+  }
+
+  void _rebuildMarkersForZoom() {
+    if (_waterStations.isEmpty) return;
+
+    final markerWidget = _getMarkerWidget(_currentZoom);
+    final markerSize = _getMarkerSize(_currentZoom);
+
+    setState(() {
+      _markers = List.generate(_waterStations.length, (index) {
+        return Marker(
+          point: _waterStations[index].position,
+          width: markerSize,
+          height: markerSize,
+          child: markerWidget,
+        );
+      });
+    });
   }
 
   Future<void> _initializeMarkers() async {
+    setState(() {
+      _markersLoading = true;
+    });
+
     try {
-      final waterStations = await WaterStationsService.loadWaterStations();
+      _waterStations = await WaterStationsService.loadWaterStations();
+
+      // Generate markers with current zoom level sizing
+      _rebuildMarkersForZoom();
 
       setState(() {
-        _markers = waterStations.map((station) {
-          return Marker(
-            point: station.position,
-            width: 4.0, // Very small marker
-            height: 4.0, // Very small marker
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.lightBlue,
-                shape: BoxShape.circle,
-              ),
-            ),
-          );
-        }).toList();
-        _isLoading = false;
+        _markersLoading = false;
       });
 
       print('Created ${_markers.length} water station markers');
+
+      // Show a brief success message
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ Successfully loaded ${_markers.length} water monitoring stations across India',
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.green,
+            action: SnackBarAction(
+              label: 'Dismiss',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
+        );
+      }
     } catch (e) {
       print('Error initializing markers: $e');
       setState(() {
-        _isLoading = false;
+        _markersLoading = false;
       });
     }
   }
@@ -70,9 +189,20 @@ class _MapScreenState extends State<MapScreen> {
         _allIndiaBoundaries = allPolygons;
         _boundaryLoaded = true;
       });
+
+      // Wait a moment for the UI to update and show the map, then start loading markers
+      await Future.delayed(const Duration(milliseconds: 500));
+      _initializeMarkers();
     } catch (e) {
       print('Error loading India boundary: $e');
       // Keep the empty boundary list as fallback
+      setState(() {
+        _boundaryLoaded = true; // Still allow the map to show
+      });
+
+      // Even if boundary loading fails, still try to load markers after delay
+      await Future.delayed(const Duration(milliseconds: 500));
+      _initializeMarkers();
     }
   }
 
@@ -91,9 +221,15 @@ class _MapScreenState extends State<MapScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(16.0),
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Text(
-              "Water monitoring stations across India",
-              style: TextStyle(fontSize: 16),
+            child: Text(
+              !_boundaryLoaded
+                  ? "Loading map boundaries..."
+                  : _markersLoading
+                  ? "Loading 31,574 water monitoring stations..."
+                  : _markers.isEmpty
+                  ? "Map ready - stations will load shortly"
+                  : "Showing ${_markers.length} water monitoring stations across India (Zoom: ${_currentZoom.toStringAsFixed(1)})",
+              style: const TextStyle(fontSize: 16),
               textAlign: TextAlign.center,
             ),
           ),
@@ -109,6 +245,7 @@ class _MapScreenState extends State<MapScreen> {
                         4.2, // Reduced zoom to show entire India including islands
                     minZoom: 3.5,
                     maxZoom: 18.0,
+                    onMapEvent: _onMapEvent, // Add zoom change detection
                     interactionOptions: const InteractionOptions(
                       flags:
                           InteractiveFlag.pinchZoom |
@@ -161,8 +298,8 @@ class _MapScreenState extends State<MapScreen> {
                     MarkerLayer(markers: _markers),
                   ],
                 ),
-                // Loading indicator while boundary and markers are loading
-                if (!_boundaryLoaded || _isLoading)
+                // Loading indicator while boundary is loading (blocks whole map)
+                if (!_boundaryLoaded)
                   Container(
                     color: Colors.black.withValues(alpha: 0.3),
                     child: const Center(
@@ -172,8 +309,39 @@ class _MapScreenState extends State<MapScreen> {
                           CircularProgressIndicator(color: Colors.orange),
                           SizedBox(height: 16),
                           Text(
-                            'Loading map data...',
+                            'Loading map boundaries...',
                             style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                // Loading indicator for markers only (small overlay)
+                if (_boundaryLoaded && _markersLoading)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              color: Colors.orange,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Loading 31,574 stations...',
+                            style: TextStyle(color: Colors.white, fontSize: 12),
                           ),
                         ],
                       ),
@@ -191,10 +359,11 @@ class _MapScreenState extends State<MapScreen> {
             heroTag: "zoom_in",
             onPressed: () {
               final currentZoom = _mapController.camera.zoom;
-              _mapController.move(
-                _mapController.camera.center,
-                currentZoom + 1,
-              );
+              final newZoom = currentZoom + 1;
+              _mapController.move(_mapController.camera.center, newZoom);
+              // Update zoom tracking for immediate marker resize
+              _currentZoom = newZoom;
+              _rebuildMarkersForZoom();
             },
             child: const Icon(Icons.zoom_in),
           ),
@@ -203,10 +372,11 @@ class _MapScreenState extends State<MapScreen> {
             heroTag: "zoom_out",
             onPressed: () {
               final currentZoom = _mapController.camera.zoom;
-              _mapController.move(
-                _mapController.camera.center,
-                currentZoom - 1,
-              );
+              final newZoom = currentZoom - 1;
+              _mapController.move(_mapController.camera.center, newZoom);
+              // Update zoom tracking for immediate marker resize
+              _currentZoom = newZoom;
+              _rebuildMarkersForZoom();
             },
             child: const Icon(Icons.zoom_out),
           ),
@@ -214,10 +384,12 @@ class _MapScreenState extends State<MapScreen> {
           FloatingActionButton.small(
             heroTag: "center_map",
             onPressed: () {
+              _currentZoom = 4.2;
               _mapController.move(
                 _center,
-                4.2,
+                _currentZoom,
               ); // Zoom level to show entire India including islands
+              _rebuildMarkersForZoom();
             },
             child: const Icon(Icons.my_location),
           ),
