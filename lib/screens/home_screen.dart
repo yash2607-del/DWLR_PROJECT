@@ -29,20 +29,20 @@ class HomeScreen extends StatelessWidget {
 
             // Navigation Buttons
             CustomButton(
-              label: "View Stations",
+              label: "View Map",
+              onTap: () => Navigator.pushNamed(context, '/map'),
+            ),
+            CustomButton(
+              label: "Search Station Info",
               onTap: () => Navigator.pushNamed(context, '/stations'),
             ),
             CustomButton(
-              label: "View Charts",
-              onTap: () => Navigator.pushNamed(context, '/charts'),
-            ),
-            CustomButton(
-              label: "View Charts",
+              label: "Look Up Trends",
               onTap: () => Navigator.pushNamed(context, '/charts'),
             ),
 
             CustomButton(
-              label: "About Project",
+              label: "Waterfall Info",
               onTap: () => Navigator.pushNamed(context, '/about'),
             )
           ],

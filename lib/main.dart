@@ -5,6 +5,7 @@ import 'screens/home_screen.dart';
 import 'screens/station_screen.dart';
 import 'screens/chart_screen.dart';
 import 'screens/about_screen.dart';
+import 'screens/map_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,10 +23,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
         textTheme: const TextTheme(
-          headlineMedium: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 28,
-          ),
+          headlineMedium: TextStyle(fontWeight: FontWeight.bold, fontSize: 28),
           bodyMedium: TextStyle(fontSize: 16, height: 1.4),
         ),
       ),
@@ -34,6 +32,7 @@ class MyApp extends StatelessWidget {
 
       // ✅ routes for navigation
       routes: {
+        '/map': (context) => const MapScreen(),
         '/stations': (context) => const StationsScreen(),
         '/charts': (context) => const ChartsScreen(),
         '/about': (context) => const AboutScreen(),
