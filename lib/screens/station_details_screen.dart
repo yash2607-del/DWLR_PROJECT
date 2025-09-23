@@ -205,7 +205,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
                 Icon(Icons.analytics, color: Colors.green, size: 24),
                 const SizedBox(width: 8),
                 Text(
-                  'Station Details (Last 7 Days)',
+                  'Station Details',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -214,45 +214,128 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            ..._buildDetailRows(),
+            _buildDetailsTable(),
           ],
         ),
       ),
     );
   }
 
-  List<Widget> _buildDetailRows() {
+  Widget _buildDetailsTable() {
     if (_waterLevelData?.details.isEmpty ?? true) {
-      return [
-        Text(
-          'No detailed information available',
-          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
         ),
-      ];
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.grey.shade500, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'No detailed information available',
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
     }
 
     final details = _waterLevelData!.details;
-    final List<Widget> rows = [];
 
+    // Filter out null, empty, and unwanted values
+    final filteredDetails = <String, String>{};
     details.forEach((key, value) {
-      if (value != null && value.toString().trim().isNotEmpty) {
-        rows.add(_buildDetailRow(key, value.toString()));
-        rows.add(const SizedBox(height: 12));
+      if (value != null &&
+          value.toString().trim().isNotEmpty &&
+          value.toString().toLowerCase() != 'null') {
+        filteredDetails[key] = value.toString();
       }
     });
 
-    // Remove the last SizedBox if rows is not empty
-    if (rows.isNotEmpty) {
-      rows.removeLast();
+    if (filteredDetails.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.grey.shade500, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'No valid data found for this station',
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
     }
 
-    return rows;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Table(
+        columnWidths: const {0: FlexColumnWidth(2), 1: FlexColumnWidth(3)},
+        children: [
+          // Table header
+          TableRow(
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+              ),
+            ),
+            children: [
+              _buildTableCell('Property', isHeader: true),
+              _buildTableCell('Value', isHeader: true),
+            ],
+          ),
+          // Table rows for each detail
+          ...filteredDetails.entries.map((entry) {
+            return TableRow(
+              decoration: BoxDecoration(
+                color: filteredDetails.keys.toList().indexOf(entry.key) % 2 == 0
+                    ? Colors.white
+                    : Colors.grey.shade50,
+              ),
+              children: [
+                _buildTableCell(_formatKey(entry.key)),
+                _buildTableCell(entry.value),
+              ],
+            );
+          }).toList(),
+        ],
+      ),
+    );
   }
 
-  Widget _buildDetailRow(String key, String value) {
+  Widget _buildTableCell(String content, {bool isHeader = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Text(
+        content,
+        style: TextStyle(
+          fontSize: isHeader ? 14 : 13,
+          fontWeight: isHeader ? FontWeight.bold : FontWeight.normal,
+          color: isHeader ? Colors.blue.shade800 : Colors.black87,
+        ),
+      ),
+    );
+  }
+
+  String _formatKey(String key) {
     // Format the key to be more readable
-    String formattedKey = key
+    return key
         .replaceAll('_', ' ')
+        .replaceAll('-', ' ')
         .split(' ')
         .map(
           (word) => word.isNotEmpty
@@ -260,23 +343,5 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
               : word,
         )
         .join(' ');
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            '$formattedKey:',
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.grey,
-              fontSize: 14,
-            ),
-          ),
-        ),
-        Expanded(child: Text(value, style: const TextStyle(fontSize: 14))),
-      ],
-    );
   }
 }

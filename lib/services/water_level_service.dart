@@ -13,19 +13,45 @@ class WaterLevelData {
   });
 
   factory WaterLevelData.fromJson(Map<String, dynamic> json) {
-    // Filter out null values
+    // Filter out null values and unwanted fields
     final filteredDetails = <String, dynamic>{};
     json.forEach((key, value) {
-      if (value != null && value.toString().trim().isNotEmpty) {
+      // Skip unwanted fields
+      if (_isUnwantedField(key)) {
+        return;
+      }
+
+      // Only include non-null, non-empty values
+      if (value != null &&
+          value.toString().trim().isNotEmpty &&
+          value.toString().toLowerCase() != 'null') {
         filteredDetails[key] = value;
       }
     });
 
     return WaterLevelData(
-      stationCode: filteredDetails['station_code']?.toString() ?? '',
-      stationName: filteredDetails['station_name']?.toString() ?? '',
+      stationCode:
+          filteredDetails['station_code']?.toString() ??
+          filteredDetails['stationcode']?.toString() ??
+          '',
+      stationName:
+          filteredDetails['station_name']?.toString() ??
+          filteredDetails['stationname']?.toString() ??
+          '',
       details: filteredDetails,
     );
+  }
+
+  static bool _isUnwantedField(String key) {
+    final unwantedFields = {
+      'statuscode',
+      'status_code',
+      'message',
+      'status',
+      'error',
+      'success',
+    };
+    return unwantedFields.contains(key.toLowerCase());
   }
 }
 
@@ -35,14 +61,6 @@ class WaterLevelService {
 
   static Future<WaterLevelData?> fetchWaterLevelData(String stationCode) async {
     try {
-      // Calculate dates
-      final endTime = DateTime.now();
-      final startTime = endTime.subtract(const Duration(days: 7));
-
-      // Format dates as required by the API
-      final String startTimeStr = _formatDate(startTime);
-      final String endTimeStr = _formatDate(endTime);
-
       final requestBody = {
         'stationcode': stationCode,
         'datasetcode': 'GWATERLVL',
@@ -68,13 +86,32 @@ class WaterLevelService {
 
         // Handle different response formats
         if (jsonData is Map<String, dynamic>) {
-          return WaterLevelData.fromJson(jsonData);
+          // Check if there's a nested 'data' field
+          if (jsonData.containsKey('data') && jsonData['data'] != null) {
+            final dataField = jsonData['data'];
+            if (dataField is Map<String, dynamic>) {
+              return WaterLevelData.fromJson(dataField);
+            } else if (dataField is List && dataField.isNotEmpty) {
+              return WaterLevelData.fromJson(dataField.first);
+            }
+          } else {
+            // If no 'data' field, use the whole response but filter out statuscode and message
+            final filteredResponse = Map<String, dynamic>.from(jsonData);
+            filteredResponse.remove('statuscode');
+            filteredResponse.remove('message');
+            filteredResponse.remove('status');
+            filteredResponse.remove('status_code');
+
+            if (filteredResponse.isNotEmpty) {
+              return WaterLevelData.fromJson(filteredResponse);
+            }
+          }
         } else if (jsonData is List && jsonData.isNotEmpty) {
           return WaterLevelData.fromJson(jsonData.first);
-        } else {
-          print('Unexpected response format: $jsonData');
-          return null;
         }
+
+        print('No valid data found in response: $jsonData');
+        return null;
       } else {
         print(
           'Failed to fetch data: ${response.statusCode} - ${response.body}',
@@ -85,10 +122,5 @@ class WaterLevelService {
       print('Error fetching water level data: $e');
       return null;
     }
-  }
-
-  static String _formatDate(DateTime date) {
-    // Format as YYYY-MM-DD or adjust based on API requirements
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 }
