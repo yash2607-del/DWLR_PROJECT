@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/geojson_service.dart';
+import '../services/water_stations_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -18,6 +19,7 @@ class _MapScreenState extends State<MapScreen> {
 
   // List of markers - will be populated with water station coordinates later
   List<Marker> _markers = [];
+  bool _isLoading = true;
 
   // India boundary coordinates - will be loaded from GeoJSON
   List<List<LatLng>> _allIndiaBoundaries = [];
@@ -30,15 +32,34 @@ class _MapScreenState extends State<MapScreen> {
     _loadIndiaBoundary();
   }
 
-  void _initializeMarkers() {
-    // Placeholder markers - you can replace these with actual coordinates later
-    _markers = [
-      Marker(
-        point: const LatLng(28.6139, 77.2090), // Delhi center
-        child: const Icon(Icons.water_drop, color: Colors.blue, size: 30),
-      ),
-      // Add more markers here when you provide the coordinates
-    ];
+  Future<void> _initializeMarkers() async {
+    try {
+      final waterStations = await WaterStationsService.loadWaterStations();
+
+      setState(() {
+        _markers = waterStations.map((station) {
+          return Marker(
+            point: station.position,
+            width: 4.0, // Very small marker
+            height: 4.0, // Very small marker
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.lightBlue,
+                shape: BoxShape.circle,
+              ),
+            ),
+          );
+        }).toList();
+        _isLoading = false;
+      });
+
+      print('Created ${_markers.length} water station markers');
+    } catch (e) {
+      print('Error initializing markers: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _loadIndiaBoundary() async {
@@ -140,8 +161,8 @@ class _MapScreenState extends State<MapScreen> {
                     MarkerLayer(markers: _markers),
                   ],
                 ),
-                // Loading indicator while boundary is loading
-                if (!_boundaryLoaded)
+                // Loading indicator while boundary and markers are loading
+                if (!_boundaryLoaded || _isLoading)
                   Container(
                     color: Colors.black.withValues(alpha: 0.3),
                     child: const Center(
@@ -151,7 +172,7 @@ class _MapScreenState extends State<MapScreen> {
                           CircularProgressIndicator(color: Colors.orange),
                           SizedBox(height: 16),
                           Text(
-                            'Loading India boundaries...',
+                            'Loading map data...',
                             style: TextStyle(color: Colors.white, fontSize: 16),
                           ),
                         ],
