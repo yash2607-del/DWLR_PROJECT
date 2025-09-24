@@ -11,15 +11,24 @@ class StationDetailsScreen extends StatefulWidget {
   State<StationDetailsScreen> createState() => _StationDetailsScreenState();
 }
 
-class _StationDetailsScreenState extends State<StationDetailsScreen> {
+class _StationDetailsScreenState extends State<StationDetailsScreen>
+    with SingleTickerProviderStateMixin {
   WaterLevelData? _waterLevelData;
   bool _isLoading = true;
   String? _errorMessage;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _fetchWaterLevelData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchWaterLevelData() async {
@@ -63,11 +72,73 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
           ),
         ],
       ),
-      body: _buildBody(),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [_buildStationHeader(), _buildTabBar(), _buildTabContent()],
+        ),
+      ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        labelColor: Colors.white,
+        unselectedLabelColor: Colors.grey.shade600,
+        indicator: BoxDecoration(
+          color: Colors.blue,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        tabs: [
+          Tab(
+            height: 20,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.info_outline, size: 18),
+                SizedBox(width: 6),
+                Text('Metadata', style: TextStyle(fontSize: 14)),
+              ],
+            ),
+          ),
+          Tab(
+            height: 20,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.timeline, size: 18),
+                SizedBox(width: 6),
+                Text('Recent Data', style: TextStyle(fontSize: 14)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    return AnimatedBuilder(
+      animation: _tabController,
+      builder: (context, child) {
+        return IndexedStack(
+          index: _tabController.index,
+          children: [_buildMetadataTab(), _buildRecentDataTab()],
+        );
+      },
+    );
+  }
+
+  Widget _buildMetadataTab() {
     if (_isLoading) {
       return const Center(
         child: Column(
@@ -104,72 +175,101 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
       );
     }
 
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildStationHeader(),
-          const SizedBox(height: 24),
-          _buildDetailsCard(),
-        ],
+      child: _buildDetailsCard(),
+    );
+  }
+
+  Widget _buildRecentDataTab() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            children: [
+              Icon(Icons.timeline, size: 64, color: Colors.grey.shade400),
+              const SizedBox(height: 16),
+              Text(
+                'Recent Data',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Coming soon...',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildStationHeader() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.water_drop, color: Colors.blue, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.station.stationName,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+    return Container(
+      margin: const EdgeInsets.all(16.0),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.water_drop, color: Colors.blue, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.station.stationName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Station Code: ${widget.station.stationCode}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey.shade600,
+                        const SizedBox(height: 4),
+                        Text(
+                          'Station Code: ${widget.station.stationCode}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Text(
+                  'Location: ${widget.station.position.latitude.toStringAsFixed(4)}, ${widget.station.position.longitude.toStringAsFixed(4)}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.blue.shade700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
               ),
-              child: Text(
-                'Location: ${widget.station.position.latitude.toStringAsFixed(4)}, ${widget.station.position.longitude.toStringAsFixed(4)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.blue.shade700,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
