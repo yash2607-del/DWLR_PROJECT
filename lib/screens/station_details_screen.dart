@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../services/water_level_service.dart';
 import '../services/water_stations_service.dart';
 
@@ -321,7 +322,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                 ],
               ),
               const SizedBox(height: 16),
-              _buildTimeSeriesTable(),
+              _buildTimeSeriesChart(),
             ],
           ),
         ),
@@ -329,80 +330,180 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     );
   }
 
-  Widget _buildTimeSeriesTable() {
+  Widget _buildTimeSeriesChart() {
+    if (_timeSeriesData.isEmpty) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Center(child: Text('No data to display')),
+      );
+    }
+
+    // Prepare data points for the chart
+    final spots = <FlSpot>[];
+    final sortedData = List<TimeSeriesDataPoint>.from(_timeSeriesData)
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+    for (int i = 0; i < sortedData.length; i++) {
+      final dataPoint = sortedData[i];
+      final value = double.tryParse(dataPoint.dataValue) ?? 0.0;
+      spots.add(FlSpot(i.toDouble(), value));
+    }
+
+    // Find min and max values for better scaling
+    final values = spots.map((spot) => spot.y).toList();
+    final minY = values.reduce((a, b) => a < b ? a : b);
+    final maxY = values.reduce((a, b) => a > b ? a : b);
+    final range = maxY - minY;
+    final padding = range * 0.1; // 10% padding
+
     return Container(
+      height: 300,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
       ),
+      padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Table header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(8),
-                topRight: Radius.circular(8),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    'Date & Time',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    'Water Level',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
-                    ),
-                  ),
-                ),
-              ],
+          Text(
+            'Water Level Trend (${_timeSeriesData.first.unitCode})',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue.shade800,
             ),
           ),
-          // Table rows
-          ..._timeSeriesData.asMap().entries.map((entry) {
-            final index = entry.key;
-            final dataPoint = entry.value;
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              decoration: BoxDecoration(
-                color: index % 2 == 0 ? Colors.white : Colors.grey.shade50,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      _formatDateTime(dataPoint.dateTime),
-                      style: const TextStyle(fontSize: 13),
+          const SizedBox(height: 16),
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: true,
+                  horizontalInterval: range > 0 ? range / 5 : 1,
+                  verticalInterval: spots.length > 5 ? spots.length / 5 : 1,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(color: Colors.grey.shade300, strokeWidth: 1);
+                  },
+                  getDrawingVerticalLine: (value) {
+                    return FlLine(color: Colors.grey.shade300, strokeWidth: 1);
+                  },
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      interval: spots.length > 6 ? spots.length / 4 : 1,
+                      getTitlesWidget: (double value, TitleMeta meta) {
+                        final index = value.toInt();
+                        if (index >= 0 && index < sortedData.length) {
+                          final date = sortedData[index].dateTime;
+                          return SideTitleWidget(
+                            axisSide: meta.axisSide,
+                            child: Text(
+                              '${date.day}/${date.month}',
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 10,
+                              ),
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
                     ),
                   ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      '${dataPoint.dataValue} ${dataPoint.unitCode}',
-                      style: const TextStyle(fontSize: 13),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: range > 0 ? range / 4 : 1,
+                      reservedSize: 42,
+                      getTitlesWidget: (double value, TitleMeta meta) {
+                        return Text(
+                          value.toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border.all(color: Colors.grey.shade400, width: 1),
+                ),
+                minX: 0,
+                maxX: (spots.length - 1).toDouble(),
+                minY: minY - padding,
+                maxY: maxY + padding,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    color: Colors.blue,
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) {
+                        return FlDotCirclePainter(
+                          radius: 4,
+                          color: Colors.blue,
+                          strokeWidth: 2,
+                          strokeColor: Colors.white,
+                        );
+                      },
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.blue.withOpacity(0.1),
                     ),
                   ),
                 ],
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+                      return touchedBarSpots.map((barSpot) {
+                        final index = barSpot.x.toInt();
+                        if (index >= 0 && index < sortedData.length) {
+                          final dataPoint = sortedData[index];
+                          return LineTooltipItem(
+                            '${_formatDateTime(dataPoint.dateTime)}\n${dataPoint.dataValue} ${dataPoint.unitCode}',
+                            const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          );
+                        }
+                        return null;
+                      }).toList();
+                    },
+                  ),
+                ),
               ),
-            );
-          }).toList(),
+            ),
+          ),
         ],
       ),
     );
