@@ -55,9 +55,36 @@ class WaterLevelData {
   }
 }
 
+class TimeSeriesDataPoint {
+  final DateTime dateTime;
+  final String dataValue;
+  final String unitCode;
+  final String? dataTypeDescription;
+
+  TimeSeriesDataPoint({
+    required this.dateTime,
+    required this.dataValue,
+    required this.unitCode,
+    this.dataTypeDescription,
+  });
+
+  factory TimeSeriesDataPoint.fromJson(Map<String, dynamic> json) {
+    return TimeSeriesDataPoint(
+      dateTime:
+          DateTime.tryParse(json['dataTime']?.toString() ?? '') ??
+          DateTime.now(),
+      dataValue: json['dataValue']?.toString() ?? 'N/A',
+      unitCode: json['unitCode']?.toString() ?? '',
+      dataTypeDescription: json['datatypeDescription']?.toString(),
+    );
+  }
+}
+
 class WaterLevelService {
   static const String _baseUrl =
       'https://indiawris.gov.in/stationMaster/getMasterStationsList';
+  static const String _timeSeriesUrl =
+      'https://indiawris.gov.in/CommonDataSetMasterAPI/getCommonDataSetByStationCode';
 
   static Future<WaterLevelData?> fetchWaterLevelData(String stationCode) async {
     try {
@@ -122,5 +149,97 @@ class WaterLevelService {
       print('Error fetching water level data: $e');
       return null;
     }
+  }
+
+  static Future<List<TimeSeriesDataPoint>> fetchTimeSeriesData(
+    String stationCode,
+  ) async {
+    try {
+      // Calculate dates
+      final endTime = DateTime.now().subtract(const Duration(days: 1));
+      final startTime = endTime.subtract(const Duration(days: 8));
+
+      // Format dates as required by the API (YYYY-MM-DD)
+      final String startTimeStr = _formatDate(startTime);
+      final String endTimeStr = _formatDate(endTime);
+
+      final requestBody = {
+        'station_code': stationCode,
+        'starttime': startTimeStr,
+        'endtime': endTimeStr,
+        'dataset': 'GWATERLVL',
+      };
+
+      print('Fetching time series data for station: $stationCode');
+      print('Request body: ${jsonEncode(requestBody)}');
+
+      final response = await http.post(
+        Uri.parse(_timeSeriesUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print('Time series response status: ${response.statusCode}');
+      print('Time series response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final jsonData = jsonDecode(response.body);
+
+        List<dynamic> dataList = [];
+
+        // Handle different response formats
+        if (jsonData is Map<String, dynamic>) {
+          if (jsonData.containsKey('data') && jsonData['data'] != null) {
+            final dataField = jsonData['data'];
+            if (dataField is List) {
+              dataList = dataField;
+            } else if (dataField is Map) {
+              // If data is a single object, wrap it in a list
+              dataList = [dataField];
+            }
+          } else if (jsonData.containsKey('dataset') &&
+              jsonData['dataset'] is List) {
+            dataList = jsonData['dataset'];
+          }
+        } else if (jsonData is List) {
+          dataList = jsonData;
+        }
+
+        // Convert to TimeSeriesDataPoint objects
+        final List<TimeSeriesDataPoint> timeSeriesData = [];
+        for (final item in dataList) {
+          if (item is Map<String, dynamic>) {
+            try {
+              final dataPoint = TimeSeriesDataPoint.fromJson(item);
+              timeSeriesData.add(dataPoint);
+            } catch (e) {
+              print('Error parsing data point: $e');
+            }
+          }
+        }
+
+        // Sort by date (newest first)
+        timeSeriesData.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+        print('Parsed ${timeSeriesData.length} time series data points');
+        return timeSeriesData;
+      } else {
+        print(
+          'Failed to fetch time series data: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching time series data: $e');
+      return [];
+    }
+  }
+
+  static String _formatDate(DateTime date) {
+    // Format as YYYY-MM-DD as required by the API
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 }

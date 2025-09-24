@@ -14,15 +14,27 @@ class StationDetailsScreen extends StatefulWidget {
 class _StationDetailsScreenState extends State<StationDetailsScreen>
     with SingleTickerProviderStateMixin {
   WaterLevelData? _waterLevelData;
+  List<TimeSeriesDataPoint> _timeSeriesData = [];
   bool _isLoading = true;
+  bool _isTimeSeriesLoading = false;
   String? _errorMessage;
+  String? _timeSeriesErrorMessage;
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _fetchWaterLevelData();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.index == 1 &&
+        _timeSeriesData.isEmpty &&
+        !_isTimeSeriesLoading) {
+      _fetchTimeSeriesData();
+    }
   }
 
   @override
@@ -53,6 +65,32 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
       setState(() {
         _isLoading = false;
         _errorMessage = 'Failed to fetch station details: $e';
+      });
+    }
+  }
+
+  Future<void> _fetchTimeSeriesData() async {
+    setState(() {
+      _isTimeSeriesLoading = true;
+      _timeSeriesErrorMessage = null;
+    });
+
+    try {
+      final data = await WaterLevelService.fetchTimeSeriesData(
+        widget.station.stationCode,
+      );
+
+      setState(() {
+        _timeSeriesData = data;
+        _isTimeSeriesLoading = false;
+        if (data.isEmpty) {
+          _timeSeriesErrorMessage = 'No recent data available for this station';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isTimeSeriesLoading = false;
+        _timeSeriesErrorMessage = 'Failed to fetch recent data: $e';
       });
     }
   }
@@ -182,33 +220,196 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
   }
 
   Widget _buildRecentDataTab() {
+    if (_isTimeSeriesLoading) {
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(
+                  'Loading recent data...',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_timeSeriesErrorMessage != null) {
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              children: [
+                Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+                const SizedBox(height: 16),
+                Text(
+                  _timeSeriesErrorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, color: Colors.red.shade700),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _fetchTimeSeriesData,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_timeSeriesData.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              children: [
+                Icon(Icons.timeline, size: 64, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                Text(
+                  'No Recent Data',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'No data available for the past 7 days',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(16.0),
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(32.0),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.timeline, size: 64, color: Colors.grey.shade400),
+              Row(
+                children: [
+                  Icon(Icons.timeline, color: Colors.blue, size: 24),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Recent Data (Last 7 Days)',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
-              Text(
-                'Recent Data',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Coming soon...',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-              ),
+              _buildTimeSeriesTable(),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildTimeSeriesTable() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          // Table header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'Date & Time',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Water Level',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Table rows
+          ..._timeSeriesData.asMap().entries.map((entry) {
+            final index = entry.key;
+            final dataPoint = entry.value;
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                color: index % 2 == 0 ? Colors.white : Colors.grey.shade50,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      _formatDateTime(dataPoint.dateTime),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      '${dataPoint.dataValue} ${dataPoint.unitCode}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.day.toString().padLeft(2, '0')}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _buildStationHeader() {
