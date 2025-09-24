@@ -152,12 +152,13 @@ class WaterLevelService {
   }
 
   static Future<List<TimeSeriesDataPoint>> fetchTimeSeriesData(
-    String stationCode,
-  ) async {
+    String stationCode, {
+    int days = 8,
+  }) async {
     try {
       // Calculate dates
       final endTime = DateTime.now().subtract(const Duration(days: 1));
-      final startTime = endTime.subtract(const Duration(days: 8));
+      final startTime = endTime.subtract(Duration(days: days));
 
       // Format dates as required by the API (YYYY-MM-DD)
       final String startTimeStr = _formatDate(startTime);
@@ -171,6 +172,7 @@ class WaterLevelService {
       };
 
       print('Fetching time series data for station: $stationCode');
+      print('Date range: $startTimeStr to $endTimeStr ($days days)');
       print('Request body: ${jsonEncode(requestBody)}');
 
       final response = await http.post(
@@ -235,6 +237,50 @@ class WaterLevelService {
     } catch (e) {
       print('Error fetching time series data: $e');
       return [];
+    }
+  }
+
+  // Convenience methods for different time periods
+  static Future<List<TimeSeriesDataPoint>> fetchWeeklyData(String stationCode) {
+    return fetchTimeSeriesData(stationCode, days: 8);
+  }
+
+  static Future<List<TimeSeriesDataPoint>> fetchMonthlyData(String stationCode) async {
+    // Try with 30 days but use the same method as weekly data
+    try {
+      final data = await fetchTimeSeriesData(stationCode, days: 30);
+      if (data.isNotEmpty) {
+        return data;
+      }
+      
+      // If 30 days returns no data, try 15 days
+      print('30 days returned no data, trying 15 days...');
+      return await fetchTimeSeriesData(stationCode, days: 15);
+    } catch (e) {
+      print('Error fetching monthly data: $e');
+      // Fallback to 10 days if longer periods fail
+      print('Falling back to 10 days...');
+      return await fetchTimeSeriesData(stationCode, days: 10);
+    }
+  }
+
+  static Future<List<TimeSeriesDataPoint>> fetchSixMonthsData(String stationCode) async {
+    // For 6 months, let's try with 90 days first to see if API supports it
+    // If this doesn't work, we can fall back to multiple smaller calls
+    try {
+      final data = await fetchTimeSeriesData(stationCode, days: 90);
+      if (data.isNotEmpty) {
+        return data;
+      }
+      
+      // If 90 days returns no data, try 60 days
+      print('90 days returned no data, trying 60 days...');
+      return await fetchTimeSeriesData(stationCode, days: 60);
+    } catch (e) {
+      print('Error fetching 6-month data: $e');
+      // Fallback to 30 days if longer periods fail
+      print('Falling back to 30 days...');
+      return await fetchTimeSeriesData(stationCode, days: 30);
     }
   }
 

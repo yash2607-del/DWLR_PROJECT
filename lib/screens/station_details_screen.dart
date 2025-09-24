@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../services/water_level_service.dart';
 import '../services/water_stations_service.dart';
+import '../widgets/fullscreen_chart.dart';
 
 class StationDetailsScreen extends StatefulWidget {
   final WaterStation station;
@@ -16,10 +17,16 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     with SingleTickerProviderStateMixin {
   WaterLevelData? _waterLevelData;
   List<TimeSeriesDataPoint> _timeSeriesData = [];
+  List<TimeSeriesDataPoint> _monthlyData = [];
+  List<TimeSeriesDataPoint> _sixMonthsData = [];
   bool _isLoading = true;
   bool _isTimeSeriesLoading = false;
+  bool _isMonthlyLoading = false;
+  bool _isSixMonthsLoading = false;
   String? _errorMessage;
   String? _timeSeriesErrorMessage;
+  String? _monthlyErrorMessage;
+  String? _sixMonthsErrorMessage;
   late TabController _tabController;
 
   @override
@@ -31,10 +38,16 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
   }
 
   void _onTabChanged() {
-    if (_tabController.index == 1 &&
-        _timeSeriesData.isEmpty &&
-        !_isTimeSeriesLoading) {
-      _fetchTimeSeriesData();
+    if (_tabController.index == 1) {
+      if (_timeSeriesData.isEmpty && !_isTimeSeriesLoading) {
+        _fetchTimeSeriesData();
+      }
+      if (_monthlyData.isEmpty && !_isMonthlyLoading) {
+        _fetchMonthlyData();
+      }
+      if (_sixMonthsData.isEmpty && !_isSixMonthsLoading) {
+        _fetchSixMonthsData();
+      }
     }
   }
 
@@ -77,7 +90,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     });
 
     try {
-      final data = await WaterLevelService.fetchTimeSeriesData(
+      final data = await WaterLevelService.fetchWeeklyData(
         widget.station.stationCode,
       );
 
@@ -94,6 +107,72 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
         _timeSeriesErrorMessage = 'Failed to fetch recent data: $e';
       });
     }
+  }
+
+  Future<void> _fetchMonthlyData() async {
+    setState(() {
+      _isMonthlyLoading = true;
+      _monthlyErrorMessage = null;
+    });
+
+    try {
+      final data = await WaterLevelService.fetchMonthlyData(
+        widget.station.stationCode,
+      );
+
+      setState(() {
+        _monthlyData = data;
+        _isMonthlyLoading = false;
+        if (data.isEmpty) {
+          _monthlyErrorMessage = 'No monthly data available for this station';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isMonthlyLoading = false;
+        _monthlyErrorMessage = 'Failed to fetch monthly data: $e';
+      });
+    }
+  }
+
+  Future<void> _fetchSixMonthsData() async {
+    setState(() {
+      _isSixMonthsLoading = true;
+      _sixMonthsErrorMessage = null;
+    });
+
+    try {
+      final data = await WaterLevelService.fetchSixMonthsData(
+        widget.station.stationCode,
+      );
+
+      setState(() {
+        _sixMonthsData = data;
+        _isSixMonthsLoading = false;
+        if (data.isEmpty) {
+          _sixMonthsErrorMessage = 'No 6-month data available for this station';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isSixMonthsLoading = false;
+        _sixMonthsErrorMessage = 'Failed to fetch 6-month data: $e';
+      });
+    }
+  }
+
+  void _openFullScreenChart(List<TimeSeriesDataPoint> data, String title, Color color) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FullScreenChart(
+          data: data,
+          title: title,
+          color: color,
+          stationName: widget.station.stationName,
+        ),
+      ),
+    );
   }
 
   @override
@@ -221,117 +300,147 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
   }
 
   Widget _buildRecentDataTab() {
-    if (_isTimeSeriesLoading) {
-      return Container(
-        padding: const EdgeInsets.all(16.0),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(
-                  'Loading recent data...',
-                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_timeSeriesErrorMessage != null) {
-      return Container(
-        padding: const EdgeInsets.all(16.0),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
-                const SizedBox(height: 16),
-                Text(
-                  _timeSeriesErrorMessage!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.red.shade700),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: _fetchTimeSeriesData,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_timeSeriesData.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16.0),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              children: [
-                Icon(Icons.timeline, size: 64, color: Colors.grey.shade400),
-                const SizedBox(height: 16),
-                Text(
-                  'No Recent Data',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'No data available for the past 7 days',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.timeline, color: Colors.blue, size: 24),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Recent Data (Last 7 Days)',
+      child: Column(
+        children: [
+          // Last 7 Days Chart
+          _buildChartSection(
+            title: 'Recent Data (Last 7 Days)',
+            icon: Icons.timeline,
+            data: _timeSeriesData,
+            isLoading: _isTimeSeriesLoading,
+            errorMessage: _timeSeriesErrorMessage,
+            onRetry: _fetchTimeSeriesData,
+            color: Colors.blue,
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Last 1 Month Chart
+          _buildChartSection(
+            title: 'Monthly Trend (Last 30 Days)',
+            icon: Icons.calendar_month,
+            data: _monthlyData,
+            isLoading: _isMonthlyLoading,
+            errorMessage: _monthlyErrorMessage,
+            onRetry: _fetchMonthlyData,
+            color: Colors.green,
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Last 6 Months Chart
+          _buildChartSection(
+            title: 'Long-term Trend (Last 6 Months)',
+            icon: Icons.show_chart,
+            data: _sixMonthsData,
+            isLoading: _isSixMonthsLoading,
+            errorMessage: _sixMonthsErrorMessage,
+            onRetry: _fetchSixMonthsData,
+            color: Colors.purple,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartSection({
+    required String title,
+    required IconData icon,
+    required List<TimeSeriesDataPoint> data,
+    required bool isLoading,
+    required String? errorMessage,
+    required VoidCallback onRetry,
+    required Color color,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            if (isLoading)
+              SizedBox(
+                height: 200,
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Loading data...'),
+                    ],
+                  ),
+                ),
+              )
+            else if (errorMessage != null)
+              SizedBox(
+                height: 200,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
+                      const SizedBox(height: 16),
+                      Text(
+                        errorMessage,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, color: Colors.red.shade700),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: onRetry,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (data.isEmpty)
+              Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: const Center(
+                  child: Text('No data to display'),
+                ),
+              )
+            else
+              InkWell(
+                onTap: () => _openFullScreenChart(data, title, color),
+                borderRadius: BorderRadius.circular(8),
+                child: _buildChart(data, color),
               ),
-              const SizedBox(height: 16),
-              _buildTimeSeriesChart(),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildTimeSeriesChart() {
-    if (_timeSeriesData.isEmpty) {
+  Widget _buildChart(List<TimeSeriesDataPoint> data, Color color) {
+    if (data.isEmpty) {
       return Container(
         height: 200,
         decoration: BoxDecoration(
@@ -345,7 +454,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
 
     // Prepare data points for the chart
     final spots = <FlSpot>[];
-    final sortedData = List<TimeSeriesDataPoint>.from(_timeSeriesData)
+    final sortedData = List<TimeSeriesDataPoint>.from(data)
       ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
 
     for (int i = 0; i < sortedData.length; i++) {
@@ -372,13 +481,24 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Water Level Trend (${_timeSeriesData.first.unitCode})',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue.shade800,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Water Level Trend (${data.first.unitCode})',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.fullscreen,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -459,7 +579,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   LineChartBarData(
                     spots: spots,
                     isCurved: true,
-                    color: Colors.blue,
+                    color: color,
                     barWidth: 3,
                     isStrokeCapRound: true,
                     dotData: FlDotData(
@@ -467,7 +587,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                       getDotPainter: (spot, percent, barData, index) {
                         return FlDotCirclePainter(
                           radius: 4,
-                          color: Colors.blue,
+                          color: color,
                           strokeWidth: 2,
                           strokeColor: Colors.white,
                         );
@@ -475,7 +595,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                     ),
                     belowBarData: BarAreaData(
                       show: true,
-                      color: Colors.blue.withOpacity(0.1),
+                      color: color.withValues(alpha: 0.1),
                     ),
                   ),
                 ],
