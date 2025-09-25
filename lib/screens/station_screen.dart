@@ -313,16 +313,20 @@ class _StationsScreenState extends State<StationsScreen> {
                           value: _selectedState,
                           hint: _isLoadingStates
                               ? const Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     SizedBox(
-                                      width: 16,
-                                      height: 16,
+                                      width: 14,
+                                      height: 14,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
                                       ),
                                     ),
-                                    SizedBox(width: 8),
-                                    Text('Loading states...'),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Loading...',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ],
                                 )
                               : const Text('Select State'),
@@ -331,7 +335,10 @@ class _StationsScreenState extends State<StationsScreen> {
                           items: _states.map((IndiaWRISState state) {
                             return DropdownMenuItem<IndiaWRISState>(
                               value: state,
-                              child: Text(state.stateName),
+                              child: Text(
+                                state.stateName,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             );
                           }).toList(),
                           onChanged: _isLoadingStates ? null : _onStateSelected,
@@ -359,29 +366,37 @@ class _StationsScreenState extends State<StationsScreen> {
                           value: _selectedDistrict,
                           hint: _isLoadingDistricts
                               ? const Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     SizedBox(
-                                      width: 16,
-                                      height: 16,
+                                      width: 14,
+                                      height: 14,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
                                       ),
                                     ),
-                                    SizedBox(width: 8),
-                                    Text('Loading districts...'),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Loading...',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ],
                                 )
                               : Text(
                                   _selectedState == null
                                       ? 'Select state first'
                                       : 'Select District',
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                           isExpanded: true,
                           underline: const SizedBox(),
                           items: _districts.map((IndiaWRISDistrict district) {
                             return DropdownMenuItem<IndiaWRISDistrict>(
                               value: district,
-                              child: Text(district.districtName),
+                              child: Text(
+                                district.districtName,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             );
                           }).toList(),
                           onChanged:
@@ -399,16 +414,21 @@ class _StationsScreenState extends State<StationsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Showing ${_filteredStations.length} of ${_allStations.length} stations',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    Expanded(
+                      child: Text(
+                        'Showing ${_filteredStations.length} of ${_allStations.length} stations',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    if (_isSearching)
+                    if (_isSearching) ...[
+                      const SizedBox(width: 8),
                       const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
+                    ],
                   ],
                 ),
               ],
