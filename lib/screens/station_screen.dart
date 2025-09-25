@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import '../services/water_stations_service.dart';
+import '../services/indiawris_service.dart';
+import '../models/indiawris_models.dart';
+import '../services/station_coordinates_service.dart';
 import 'station_details_screen.dart';
+import '../services/water_stations_service.dart';
 
 class StationsScreen extends StatefulWidget {
   const StationsScreen({super.key});
@@ -11,22 +14,27 @@ class StationsScreen extends StatefulWidget {
 
 class _StationsScreenState extends State<StationsScreen> {
   final TextEditingController _searchController = TextEditingController();
-  List<WaterStation> _allStations = [];
-  List<WaterStation> _filteredStations = [];
-  
-  // For state and district filtering - we'll extract these from station names
-  List<String> _uniqueStates = [];
-  List<String> _uniqueDistricts = [];
-  String? _selectedState;
-  String? _selectedDistrict;
-  
-  bool _isLoading = false;
+
+  // API data
+  List<IndiaWRISState> _states = [];
+  List<IndiaWRISDistrict> _districts = [];
+  List<IndiaWRISStation> _allStations = [];
+  List<IndiaWRISStation> _filteredStations = [];
+
+  // Selected values
+  IndiaWRISState? _selectedState;
+  IndiaWRISDistrict? _selectedDistrict;
+
+  // Loading states
+  bool _isLoadingStates = false;
+  bool _isLoadingDistricts = false;
+  bool _isLoadingStations = false;
   bool _isSearching = false;
 
   @override
   void initState() {
     super.initState();
-    _loadWaterStations();
+    _loadStates();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -38,82 +46,80 @@ class _StationsScreenState extends State<StationsScreen> {
   }
 
   void _onSearchChanged() {
-    _performSearch(_searchController.text);
+    // Only allow search if state and district are selected and stations are loaded
+    if (_selectedState != null &&
+        _selectedDistrict != null &&
+        _allStations.isNotEmpty) {
+      _performSearch(_searchController.text);
+    }
   }
 
-  Future<void> _loadWaterStations() async {
+  Future<void> _loadStates() async {
     setState(() {
-      _isLoading = true;
+      _isLoadingStates = true;
     });
 
     try {
-      final stations = await WaterStationsService.loadWaterStations();
+      final states = await IndiaWRISService.fetchStates();
+      setState(() {
+        _states = states;
+        _isLoadingStates = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingStates = false;
+      });
+      _showErrorSnackBar('Failed to load states: $e');
+    }
+  }
+
+  Future<void> _loadDistricts(String stateCode) async {
+    setState(() {
+      _isLoadingDistricts = true;
+      _districts.clear();
+      _selectedDistrict = null;
+      _allStations.clear();
+      _filteredStations.clear();
+    });
+
+    try {
+      final districts = await IndiaWRISService.fetchDistricts(stateCode);
+      setState(() {
+        _districts = districts;
+        _isLoadingDistricts = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingDistricts = false;
+      });
+      _showErrorSnackBar('Failed to load districts: $e');
+    }
+  }
+
+  Future<void> _loadStations(String districtId) async {
+    setState(() {
+      _isLoadingStations = true;
+      _allStations.clear();
+      _filteredStations.clear();
+    });
+
+    try {
+      final agencyId = IndiaWRISService.getDefaultAgencyId();
+      final stations = await IndiaWRISService.fetchStations(
+        districtId,
+        agencyId,
+      );
       setState(() {
         _allStations = stations;
         _filteredStations = stations;
-        _isLoading = false;
+        _isLoadingStations = false;
       });
-      
-      // Extract unique states and districts from station names
-      _extractLocationsFromStations();
     } catch (e) {
       setState(() {
-        _isLoading = false;
+        _isLoadingStations = false;
       });
-      _showErrorSnackBar('Failed to load water stations: $e');
+      _showErrorSnackBar('Failed to load stations: $e');
     }
-  }
-
-  void _extractLocationsFromStations() {
-    // Since we don't have explicit state/district data, we'll extract from station names
-    // This is a simplified approach - in a real app, you'd have proper location data
-    Set<String> states = <String>{};
-    Set<String> districts = <String>{};
-    
-    for (final station in _allStations) {
-      // Extract state/district info from station names if possible
-      // This is a simplified heuristic approach
-      final nameParts = station.stationName.toLowerCase().split(' ');
-      
-      // Look for common state indicators in station names
-      for (final part in nameParts) {
-        if (_isStateIndicator(part)) {
-          states.add(_capitalizeFirst(part));
-        }
-        if (_isDistrictIndicator(part)) {
-          districts.add(_capitalizeFirst(part));
-        }
-      }
-    }
-    
-    setState(() {
-      _uniqueStates = states.toList()..sort();
-      _uniqueDistricts = districts.toList()..sort();
-    });
-  }
-
-  bool _isStateIndicator(String word) {
-    // Common state indicators in station names
-    const stateIndicators = [
-      'kerala', 'tamil', 'karnataka', 'andhra', 'telangana', 'maharashtra',
-      'gujarat', 'rajasthan', 'madhya', 'uttar', 'bihar', 'west', 'odisha',
-      'jharkhand', 'chhattisgarh', 'punjab', 'haryana', 'himachal', 'delhi',
-      'goa', 'assam', 'tripura', 'meghalaya', 'manipur', 'nagaland', 'mizoram'
-    ];
-    return stateIndicators.contains(word);
-  }
-
-  bool _isDistrictIndicator(String word) {
-    // Common district indicators - this is simplified
-    const districtIndicators = [
-      'district', 'city', 'town', 'municipal', 'corporation', 'taluk', 'tehsil'
-    ];
-    return districtIndicators.contains(word) || word.length > 4;
-  }
-
-  String _capitalizeFirst(String text) {
-    if (text.isEmpty) return text;
-    return text[0].toUpperCase() + text.substring(1);
   }
 
   void _performSearch(String query) {
@@ -130,9 +136,13 @@ class _StationsScreenState extends State<StationsScreen> {
     });
 
     final lowerQuery = query.toLowerCase();
-    final filtered = _allStations.where((station) =>
-        station.stationName.toLowerCase().contains(lowerQuery) ||
-        station.stationCode.toLowerCase().contains(lowerQuery)).toList();
+    final filtered = _allStations
+        .where(
+          (station) =>
+              station.stationName.toLowerCase().contains(lowerQuery) ||
+              station.stationCode.toLowerCase().contains(lowerQuery),
+        )
+        .toList();
 
     setState(() {
       _filteredStations = filtered;
@@ -140,74 +150,71 @@ class _StationsScreenState extends State<StationsScreen> {
     });
   }
 
-  void _applyStateFilter(String? state) {
+  void _onStateSelected(IndiaWRISState? state) async {
+    if (state == null) return;
+
     setState(() {
       _selectedState = state;
-      _selectedDistrict = null; // Reset district when state changes
+      _selectedDistrict = null;
+      _allStations.clear();
+      _filteredStations.clear();
+      _searchController.clear();
     });
-    _applyFilters();
+
+    await _loadDistricts(state.stateCode);
   }
 
-  void _applyDistrictFilter(String? district) {
+  void _onDistrictSelected(IndiaWRISDistrict? district) async {
+    if (district == null) return;
+
     setState(() {
       _selectedDistrict = district;
+      _allStations.clear();
+      _filteredStations.clear();
+      _searchController.clear();
     });
-    _applyFilters();
-  }
 
-  void _applyFilters() {
-    List<WaterStation> filtered = _allStations;
-
-    if (_selectedState != null) {
-      filtered = filtered.where((station) =>
-          station.stationName.toLowerCase().contains(_selectedState!.toLowerCase())).toList();
-    }
-
-    if (_selectedDistrict != null) {
-      filtered = filtered.where((station) =>
-          station.stationName.toLowerCase().contains(_selectedDistrict!.toLowerCase())).toList();
-    }
-
-    // Also apply search filter
-    final searchQuery = _searchController.text;
-    if (searchQuery.isNotEmpty) {
-      final lowerQuery = searchQuery.toLowerCase();
-      filtered = filtered.where((station) =>
-          station.stationName.toLowerCase().contains(lowerQuery) ||
-          station.stationCode.toLowerCase().contains(lowerQuery)).toList();
-    }
-
-    setState(() {
-      _filteredStations = filtered;
-    });
+    await _loadStations(district.districtId);
   }
 
   void _clearFilters() {
     setState(() {
       _selectedState = null;
       _selectedDistrict = null;
+      _districts.clear();
+      _allStations.clear();
+      _filteredStations.clear();
       _searchController.clear();
-      _filteredStations = _allStations;
     });
   }
 
-  void _navigateToStationDetails(WaterStation station) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => StationDetailsScreen(
-          station: station,
-        ),
-      ),
+  void _navigateToStationDetails(IndiaWRISStation station) async {
+    // Try to get coordinates from the existing JSON file
+    final coordinates = await StationCoordinatesService.getCoordinates(
+      station.stationCode,
     );
+
+    // Convert IndiaWRISStation to WaterStation for compatibility
+    final waterStation = WaterStation(
+      stationCode: station.stationCode,
+      stationName: station.stationName,
+      lat: coordinates?['lat'] ?? 0.0,
+      long: coordinates?['long'] ?? 0.0,
+    );
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => StationDetailsScreen(station: waterStation),
+        ),
+      );
+    }
   }
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -235,7 +242,7 @@ class _StationsScreenState extends State<StationsScreen> {
               color: Colors.grey[100],
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Colors.grey.withValues(alpha: 0.3),
                   spreadRadius: 1,
                   blurRadius: 3,
                   offset: const Offset(0, 2),
@@ -245,11 +252,18 @@ class _StationsScreenState extends State<StationsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Search Bar
+                // Search Bar (only enabled when state and district are selected)
                 TextField(
                   controller: _searchController,
+                  enabled:
+                      _selectedState != null &&
+                      _selectedDistrict != null &&
+                      _allStations.isNotEmpty,
                   decoration: InputDecoration(
-                    hintText: 'Search stations by name or code',
+                    hintText:
+                        _selectedState == null || _selectedDistrict == null
+                        ? 'Select state and district first'
+                        : 'Search stations by name or code',
                     prefixIcon: const Icon(Icons.search, color: Colors.blue),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
@@ -265,72 +279,121 @@ class _StationsScreenState extends State<StationsScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.blue, width: 2),
+                      borderSide: const BorderSide(
+                        color: Colors.blue,
+                        width: 2,
+                      ),
                     ),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor:
+                        _selectedState == null || _selectedDistrict == null
+                        ? Colors.grey[100]
+                        : Colors.white,
                   ),
                 ),
                 const SizedBox(height: 16),
-                
-                // Filter Dropdowns
+
+                // State and District Selection
                 Row(
                   children: [
-                    // State Filter
+                    // State Dropdown
                     Expanded(
                       flex: 1,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.grey[300]!),
                         ),
-                        child: DropdownButton<String>(
+                        child: DropdownButton<IndiaWRISState>(
                           value: _selectedState,
-                          hint: const Text('State'),
+                          hint: _isLoadingStates
+                              ? const Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text('Loading states...'),
+                                  ],
+                                )
+                              : const Text('Select State'),
                           isExpanded: true,
                           underline: const SizedBox(),
-                          items: _uniqueStates.map((String state) {
-                            return DropdownMenuItem<String>(
+                          items: _states.map((IndiaWRISState state) {
+                            return DropdownMenuItem<IndiaWRISState>(
                               value: state,
-                              child: Text(state),
+                              child: Text(state.stateName),
                             );
                           }).toList(),
-                          onChanged: _applyStateFilter,
+                          onChanged: _isLoadingStates ? null : _onStateSelected,
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    
-                    // District Filter
+
+                    // District Dropdown
                     Expanded(
                       flex: 1,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: _selectedState == null
+                              ? Colors.grey[100]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.grey[300]!),
                         ),
-                        child: DropdownButton<String>(
+                        child: DropdownButton<IndiaWRISDistrict>(
                           value: _selectedDistrict,
-                          hint: const Text('District'),
+                          hint: _isLoadingDistricts
+                              ? const Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text('Loading districts...'),
+                                  ],
+                                )
+                              : Text(
+                                  _selectedState == null
+                                      ? 'Select state first'
+                                      : 'Select District',
+                                ),
                           isExpanded: true,
                           underline: const SizedBox(),
-                          items: _uniqueDistricts.map((String district) {
-                            return DropdownMenuItem<String>(
+                          items: _districts.map((IndiaWRISDistrict district) {
+                            return DropdownMenuItem<IndiaWRISDistrict>(
                               value: district,
-                              child: Text(district),
+                              child: Text(district.districtName),
                             );
                           }).toList(),
-                          onChanged: _applyDistrictFilter,
+                          onChanged:
+                              (_selectedState == null || _isLoadingDistricts)
+                              ? null
+                              : _onDistrictSelected,
                         ),
                       ),
                     ),
                   ],
                 ),
-                
+
                 // Results Count
                 const SizedBox(height: 12),
                 Row(
@@ -338,10 +401,7 @@ class _StationsScreenState extends State<StationsScreen> {
                   children: [
                     Text(
                       'Showing ${_filteredStations.length} of ${_allStations.length} stations',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
                     if (_isSearching)
                       const SizedBox(
@@ -354,10 +414,10 @@ class _StationsScreenState extends State<StationsScreen> {
               ],
             ),
           ),
-          
+
           // Stations List
           Expanded(
-            child: _isLoading
+            child: _isLoadingStations
                 ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -368,101 +428,163 @@ class _StationsScreenState extends State<StationsScreen> {
                       ],
                     ),
                   )
-                : _filteredStations.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.water_drop_outlined,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _searchController.text.isNotEmpty || 
-                              _selectedState != null || 
-                              _selectedDistrict != null
-                                  ? 'No stations found matching your criteria'
-                                  : 'No water stations available',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: _clearFilters,
-                              child: const Text('Clear filters'),
-                            ),
-                          ],
+                : _selectedState == null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.location_on_outlined,
+                          size: 64,
+                          color: Colors.grey[400],
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _filteredStations.length,
-                        itemBuilder: (context, index) {
-                          final station = _filteredStations[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Please select a state to continue',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : _selectedDistrict == null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.location_city_outlined,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Please select a district to load stations',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : _filteredStations.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.water_drop_outlined,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchController.text.isNotEmpty
+                              ? 'No stations found matching your search'
+                              : 'No water stations available in this district',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        if (_searchController.text.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: () => _searchController.clear(),
+                            child: const Text('Clear search'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _filteredStations.length,
+                    itemBuilder: (context, index) {
+                      final station = _filteredStations[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(16),
+                          leading: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(25),
                             ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.all(16),
-                              leading: Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  color: Colors.blue[50],
-                                  borderRadius: BorderRadius.circular(25),
-                                ),
-                                child: const Icon(
-                                  Icons.water_drop,
-                                  color: Colors.blue,
-                                  size: 28,
-                                ),
-                              ),
-                              title: Text(
-                                station.stationName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Code: ${station.stationCode}',
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Lat: ${station.lat.toStringAsFixed(4)}, '
-                                    'Long: ${station.long.toStringAsFixed(4)}',
-                                    style: TextStyle(
-                                      color: Colors.grey[500],
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              trailing: const Icon(
-                                Icons.arrow_forward_ios,
-                                color: Colors.grey,
-                                size: 16,
-                              ),
-                              onTap: () => _navigateToStationDetails(station),
+                            child: const Icon(
+                              Icons.water_drop,
+                              color: Colors.blue,
+                              size: 28,
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                          title: Text(
+                            station.stationName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text(
+                                'Code: ${station.stationCode}',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              FutureBuilder<Map<String, double>?>(
+                                future:
+                                    StationCoordinatesService.getCoordinates(
+                                      station.stationCode,
+                                    ),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasData &&
+                                      snapshot.data != null) {
+                                    final coords = snapshot.data!;
+                                    return Text(
+                                      'Lat: ${coords['lat']!.toStringAsFixed(4)}, '
+                                      'Long: ${coords['long']!.toStringAsFixed(4)}',
+                                      style: TextStyle(
+                                        color: Colors.grey[500],
+                                        fontSize: 12,
+                                      ),
+                                    );
+                                  } else {
+                                    return Text(
+                                      'Coordinates not available',
+                                      style: TextStyle(
+                                        color: Colors.grey[500],
+                                        fontSize: 12,
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.grey,
+                            size: 16,
+                          ),
+                          onTap: () => _navigateToStationDetails(station),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
