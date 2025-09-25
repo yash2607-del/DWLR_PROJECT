@@ -6,6 +6,7 @@ import 'screens/station_screen.dart';
 import 'screens/chart_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/map_screen.dart';
+import 'screens/analytics_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -36,6 +37,7 @@ class MyApp extends StatelessWidget {
         '/stations': (context) => const StationsScreen(),
         '/charts': (context) => const ChartsScreen(),
         '/about': (context) => const AboutScreen(),
+        '/analytics': (context) => const AnalyticsScreen(),
       },
     );
   }
