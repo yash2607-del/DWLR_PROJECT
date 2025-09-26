@@ -245,14 +245,16 @@ class WaterLevelService {
     return fetchTimeSeriesData(stationCode, days: 8);
   }
 
-  static Future<List<TimeSeriesDataPoint>> fetchMonthlyData(String stationCode) async {
+  static Future<List<TimeSeriesDataPoint>> fetchMonthlyData(
+    String stationCode,
+  ) async {
     // Try with 30 days but use the same method as weekly data
     try {
       final data = await fetchTimeSeriesData(stationCode, days: 30);
       if (data.isNotEmpty) {
         return data;
       }
-      
+
       // If 30 days returns no data, try 15 days
       print('30 days returned no data, trying 15 days...');
       return await fetchTimeSeriesData(stationCode, days: 15);
@@ -264,7 +266,9 @@ class WaterLevelService {
     }
   }
 
-  static Future<List<TimeSeriesDataPoint>> fetchSixMonthsData(String stationCode) async {
+  static Future<List<TimeSeriesDataPoint>> fetchSixMonthsData(
+    String stationCode,
+  ) async {
     // For 6 months, let's try with 90 days first to see if API supports it
     // If this doesn't work, we can fall back to multiple smaller calls
     try {
@@ -272,7 +276,7 @@ class WaterLevelService {
       if (data.isNotEmpty) {
         return data;
       }
-      
+
       // If 90 days returns no data, try 60 days
       print('90 days returned no data, trying 60 days...');
       return await fetchTimeSeriesData(stationCode, days: 60);
@@ -281,6 +285,92 @@ class WaterLevelService {
       // Fallback to 30 days if longer periods fail
       print('Falling back to 30 days...');
       return await fetchTimeSeriesData(stationCode, days: 30);
+    }
+  }
+
+  static Future<List<TimeSeriesDataPoint>> fetchCustomRangeData(
+    String stationCode,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    try {
+      // Format dates as required by the API (YYYY-MM-DD)
+      final String startTimeStr = _formatDate(startDate);
+      final String endTimeStr = _formatDate(endDate);
+
+      final requestBody = {
+        'station_code': stationCode,
+        'starttime': startTimeStr,
+        'endtime': endTimeStr,
+        'dataset': 'GWATERLVL',
+      };
+
+      print('Fetching custom range data for station: $stationCode');
+      print('Date range: $startTimeStr to $endTimeStr');
+      print('Request body: ${jsonEncode(requestBody)}');
+
+      final response = await http.post(
+        Uri.parse(_timeSeriesUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print('Custom range response status: ${response.statusCode}');
+      print('Custom range response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final jsonData = jsonDecode(response.body);
+
+        List<dynamic> dataList = [];
+
+        // Handle different response formats
+        if (jsonData is Map<String, dynamic>) {
+          if (jsonData.containsKey('data') && jsonData['data'] != null) {
+            final dataField = jsonData['data'];
+            if (dataField is List) {
+              dataList = dataField;
+            } else if (dataField is Map) {
+              // If data is a single object, wrap it in a list
+              dataList = [dataField];
+            }
+          } else if (jsonData.containsKey('dataset') &&
+              jsonData['dataset'] is List) {
+            dataList = jsonData['dataset'];
+          }
+        } else if (jsonData is List) {
+          dataList = jsonData;
+        }
+
+        // Convert to TimeSeriesDataPoint objects
+        final List<TimeSeriesDataPoint> timeSeriesData = [];
+        for (final item in dataList) {
+          if (item is Map<String, dynamic>) {
+            try {
+              final dataPoint = TimeSeriesDataPoint.fromJson(item);
+              timeSeriesData.add(dataPoint);
+            } catch (e) {
+              print('Error parsing data point: $e');
+            }
+          }
+        }
+
+        // Sort by date (newest first)
+        timeSeriesData.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+        print('Parsed ${timeSeriesData.length} custom range data points');
+        return timeSeriesData;
+      } else {
+        print(
+          'Failed to fetch custom range data: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching custom range data: $e');
+      return [];
     }
   }
 

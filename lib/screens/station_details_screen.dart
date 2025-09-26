@@ -19,14 +19,20 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
   List<TimeSeriesDataPoint> _timeSeriesData = [];
   List<TimeSeriesDataPoint> _monthlyData = [];
   List<TimeSeriesDataPoint> _sixMonthsData = [];
+  List<TimeSeriesDataPoint> _customRangeData = [];
   bool _isLoading = true;
   bool _isTimeSeriesLoading = false;
   bool _isMonthlyLoading = false;
   bool _isSixMonthsLoading = false;
+  bool _isCustomRangeLoading = false;
+  bool _isCustomDateMode = false;
   String? _errorMessage;
   String? _timeSeriesErrorMessage;
   String? _monthlyErrorMessage;
   String? _sixMonthsErrorMessage;
+  String? _customRangeErrorMessage;
+  DateTime? _startDate;
+  DateTime? _endDate;
   late TabController _tabController;
 
   @override
@@ -161,7 +167,63 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     }
   }
 
-  void _openFullScreenChart(List<TimeSeriesDataPoint> data, String title, Color color) {
+  Future<void> _fetchCustomRangeData() async {
+    if (_startDate == null || _endDate == null) {
+      setState(() {
+        _customRangeErrorMessage = 'Please select both start and end dates';
+      });
+      return;
+    }
+
+    // Validate that end date is not in the future
+    if (_endDate!.isAfter(DateTime.now())) {
+      setState(() {
+        _customRangeErrorMessage = 'End date cannot be in the future';
+      });
+      return;
+    }
+
+    // Validate that start date is before end date
+    if (_startDate!.isAfter(_endDate!)) {
+      setState(() {
+        _customRangeErrorMessage = 'Start date must be before end date';
+      });
+      return;
+    }
+
+    setState(() {
+      _isCustomRangeLoading = true;
+      _customRangeErrorMessage = null;
+    });
+
+    try {
+      final data = await WaterLevelService.fetchCustomRangeData(
+        widget.station.stationCode,
+        _startDate!,
+        _endDate!,
+      );
+
+      setState(() {
+        _customRangeData = data;
+        _isCustomRangeLoading = false;
+        if (data.isEmpty) {
+          _customRangeErrorMessage =
+              'No data available for the selected date range';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isCustomRangeLoading = false;
+        _customRangeErrorMessage = 'Failed to fetch custom range data: $e';
+      });
+    }
+  }
+
+  void _openFullScreenChart(
+    List<TimeSeriesDataPoint> data,
+    String title,
+    Color color,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -304,42 +366,251 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // Last 7 Days Chart
-          _buildChartSection(
-            title: 'Recent Data (Last 7 Days)',
-            icon: Icons.timeline,
-            data: _timeSeriesData,
-            isLoading: _isTimeSeriesLoading,
-            errorMessage: _timeSeriesErrorMessage,
-            onRetry: _fetchTimeSeriesData,
-            color: Colors.blue,
+          // Data Range Options - Expandable
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ExpansionTile(
+              initiallyExpanded: false,
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 8,
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.tune_rounded,
+                  color: Colors.blue.shade600,
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Data Range Options',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              subtitle: Text(
+                _isCustomDateMode
+                    ? (_startDate != null && _endDate != null
+                          ? 'Custom: ${_formatDateOnly(_startDate!)} - ${_formatDateOnly(_endDate!)}'
+                          : 'Custom range - Select dates')
+                    : 'Predefined ranges (7 days, 1 month, 6 months)',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+              children: [
+                // Use Column instead of Row for better mobile layout
+                Column(
+                  children: [
+                    // Predefined Ranges Option
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isCustomDateMode = false;
+                          _customRangeErrorMessage = null;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: !_isCustomDateMode
+                              ? Colors.blue.shade50
+                              : Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: !_isCustomDateMode
+                                ? Colors.blue.shade300
+                                : Colors.grey.shade300,
+                            width: !_isCustomDateMode ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Radio<bool>(
+                              value: false,
+                              groupValue: _isCustomDateMode,
+                              onChanged: (value) {
+                                setState(() {
+                                  _isCustomDateMode = value!;
+                                  _customRangeErrorMessage = null;
+                                });
+                              },
+                              activeColor: Colors.blue.shade600,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Predefined Ranges',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: !_isCustomDateMode
+                                          ? Colors.blue.shade800
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '7 days, 1 month, 6 months',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // Custom Range Option
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isCustomDateMode = true;
+                          _customRangeErrorMessage = null;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: _isCustomDateMode
+                              ? Colors.blue.shade50
+                              : Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _isCustomDateMode
+                                ? Colors.blue.shade300
+                                : Colors.grey.shade300,
+                            width: _isCustomDateMode ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Radio<bool>(
+                              value: true,
+                              groupValue: _isCustomDateMode,
+                              onChanged: (value) {
+                                setState(() {
+                                  _isCustomDateMode = value!;
+                                  _customRangeErrorMessage = null;
+                                });
+                              },
+                              activeColor: Colors.blue.shade600,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Custom Range',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: _isCustomDateMode
+                                          ? Colors.blue.shade800
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Select specific dates',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_isCustomDateMode) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    height: 1,
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          Colors.grey.shade300,
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildCustomDateRangeSelector(),
+                ],
+              ],
+            ),
           ),
-          
+
           const SizedBox(height: 16),
-          
-          // Last 1 Month Chart
-          _buildChartSection(
-            title: 'Monthly Trend (Last 30 Days)',
-            icon: Icons.calendar_month,
-            data: _monthlyData,
-            isLoading: _isMonthlyLoading,
-            errorMessage: _monthlyErrorMessage,
-            onRetry: _fetchMonthlyData,
-            color: Colors.green,
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Last 6 Months Chart
-          _buildChartSection(
-            title: 'Long-term Trend (Last 6 Months)',
-            icon: Icons.show_chart,
-            data: _sixMonthsData,
-            isLoading: _isSixMonthsLoading,
-            errorMessage: _sixMonthsErrorMessage,
-            onRetry: _fetchSixMonthsData,
-            color: Colors.purple,
-          ),
+
+          // Show charts based on selected mode
+          if (_isCustomDateMode)
+            _buildCustomRangeChart()
+          else ...[
+            // Last 7 Days Chart
+            _buildChartSection(
+              title: 'Recent Data (Last 7 Days)',
+              icon: Icons.timeline,
+              data: _timeSeriesData,
+              isLoading: _isTimeSeriesLoading,
+              errorMessage: _timeSeriesErrorMessage,
+              onRetry: _fetchTimeSeriesData,
+              color: Colors.blue,
+            ),
+
+            const SizedBox(height: 16),
+
+            // Last 1 Month Chart
+            _buildChartSection(
+              title: 'Monthly Trend (Last 30 Days)',
+              icon: Icons.calendar_month,
+              data: _monthlyData,
+              isLoading: _isMonthlyLoading,
+              errorMessage: _monthlyErrorMessage,
+              onRetry: _fetchMonthlyData,
+              color: Colors.green,
+            ),
+
+            const SizedBox(height: 16),
+
+            // Last 6 Months Chart
+            _buildChartSection(
+              title: 'Long-term Trend (Last 6 Months)',
+              icon: Icons.show_chart,
+              data: _sixMonthsData,
+              isLoading: _isSixMonthsLoading,
+              errorMessage: _sixMonthsErrorMessage,
+              onRetry: _fetchSixMonthsData,
+              color: Colors.purple,
+            ),
+          ],
         ],
       ),
     );
@@ -376,7 +647,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
               ],
             ),
             const SizedBox(height: 16),
-            
+
             if (isLoading)
               SizedBox(
                 height: 200,
@@ -398,12 +669,19 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
+                      Icon(
+                        Icons.error_outline,
+                        size: 48,
+                        color: Colors.red.shade400,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         errorMessage,
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: Colors.red.shade700),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.red.shade700,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
@@ -423,9 +701,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.grey.shade300),
                 ),
-                child: const Center(
-                  child: Text('No data to display'),
-                ),
+                child: const Center(child: Text('No data to display')),
               )
             else
               InkWell(
@@ -493,11 +769,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   ),
                 ),
               ),
-              Icon(
-                Icons.fullscreen,
-                color: Colors.grey[600],
-                size: 20,
-              ),
+              Icon(Icons.fullscreen, color: Colors.grey[600], size: 20),
             ],
           ),
           const SizedBox(height: 16),
@@ -631,6 +903,435 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day.toString().padLeft(2, '0')}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildCustomDateRangeSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.date_range, color: Colors.blue.shade600, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'Select Date Range',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // Use Column layout instead of Row to prevent overflow
+        Column(
+          children: [
+            // Start Date Selector
+            Container(
+              width: double.infinity,
+              child: InkWell(
+                onTap: () => _selectStartDate(),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: _startDate != null
+                          ? Colors.blue.shade300
+                          : Colors.grey.shade300,
+                      width: _startDate != null ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    color: _startDate != null
+                        ? Colors.blue.shade50
+                        : Colors.grey.shade50,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Start Date',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _startDate != null
+                              ? Colors.blue.shade700
+                              : Colors.grey.shade600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 18,
+                            color: _startDate != null
+                                ? Colors.blue.shade600
+                                : Colors.grey.shade500,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                _startDate != null
+                                    ? _formatDateOnly(_startDate!)
+                                    : 'Tap to select start date',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                  color: _startDate != null
+                                      ? Colors.black87
+                                      : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // End Date Selector
+            Container(
+              width: double.infinity,
+              child: InkWell(
+                onTap: () => _selectEndDate(),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: _endDate != null
+                          ? Colors.blue.shade300
+                          : Colors.grey.shade300,
+                      width: _endDate != null ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    color: _endDate != null
+                        ? Colors.blue.shade50
+                        : Colors.grey.shade50,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'End Date',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _endDate != null
+                              ? Colors.blue.shade700
+                              : Colors.grey.shade600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 18,
+                            color: _endDate != null
+                                ? Colors.blue.shade600
+                                : Colors.grey.shade500,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                _endDate != null
+                                    ? _formatDateOnly(_endDate!)
+                                    : 'Tap to select end date',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                  color: _endDate != null
+                                      ? Colors.black87
+                                      : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        // Fetch Data Button
+        Container(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton.icon(
+            onPressed:
+                (_startDate != null &&
+                    _endDate != null &&
+                    !_isCustomRangeLoading)
+                ? _fetchCustomRangeData
+                : null,
+            icon: _isCustomRangeLoading
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Icon(Icons.analytics_rounded, size: 20),
+            label: Text(
+              _isCustomRangeLoading ? 'Fetching Data...' : 'Analyze Date Range',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: (_startDate != null && _endDate != null)
+                  ? Colors.blue.shade600
+                  : Colors.grey.shade400,
+              foregroundColor: Colors.white,
+              elevation: _isCustomRangeLoading ? 0 : 2,
+              shadowColor: Colors.blue.shade200,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+
+        // Error Message
+        if (_customRangeErrorMessage != null) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.shade200, width: 1),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  size: 20,
+                  color: Colors.red.shade600,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Error',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _customRangeErrorMessage!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.red.shade700,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCustomRangeChart() {
+    final title = _startDate != null && _endDate != null
+        ? 'Custom Range'
+        : 'Custom Date Range';
+
+    final subtitle = _startDate != null && _endDate != null
+        ? '${_formatDateOnly(_startDate!)} to ${_formatDateOnly(_endDate!)}'
+        : null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.date_range, color: Colors.orange, size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            if (_isCustomRangeLoading)
+              SizedBox(
+                height: 200,
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Loading data...'),
+                    ],
+                  ),
+                ),
+              )
+            else if (_customRangeErrorMessage != null)
+              SizedBox(
+                height: 200,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 48,
+                        color: Colors.red.shade400,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _customRangeErrorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: _fetchCustomRangeData,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (_customRangeData.isEmpty)
+              Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: const Center(child: Text('No data to display')),
+              )
+            else
+              InkWell(
+                onTap: () => _openFullScreenChart(
+                  _customRangeData,
+                  title,
+                  Colors.orange,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                child: _buildChart(_customRangeData, Colors.orange),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDateOnly(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}';
+  }
+
+  Future<void> _selectStartDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate:
+          _startDate ?? DateTime.now().subtract(const Duration(days: 30)),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      helpText: 'Select Start Date',
+      cancelText: 'Cancel',
+      confirmText: 'Select',
+    );
+    if (picked != null && picked != _startDate) {
+      setState(() {
+        _startDate = picked;
+        _customRangeErrorMessage = null;
+        // Clear custom range data when dates change
+        _customRangeData.clear();
+      });
+    }
+  }
+
+  Future<void> _selectEndDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? DateTime.now(),
+      firstDate: _startDate ?? DateTime(2000),
+      lastDate: DateTime.now(),
+      helpText: 'Select End Date',
+      cancelText: 'Cancel',
+      confirmText: 'Select',
+    );
+    if (picked != null && picked != _endDate) {
+      setState(() {
+        _endDate = picked;
+        _customRangeErrorMessage = null;
+        // Clear custom range data when dates change
+        _customRangeData.clear();
+      });
+    }
   }
 
   Widget _buildStationHeader() {
