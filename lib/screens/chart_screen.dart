@@ -103,7 +103,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
     try {
       // Simulate API delay
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       // Use mock data for demonstration since API is failing
       final mockStations = [
         IndiaWRISStation(
@@ -131,7 +131,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
           telemetric: false,
         ),
       ];
-      
+
       setState(() {
         _stations = mockStations;
         _isLoadingStations = false;
@@ -147,7 +147,8 @@ class _ChartsScreenState extends State<ChartsScreen> {
   void _updateLocationDisplay() {
     if (_selectedStation != null) {
       _locationName = _selectedStation!.stationName;
-      _locationType = 'Station, ${_selectedDistrict?.districtName ?? ''}, ${_selectedState?.stateName ?? ''}';
+      _locationType =
+          'Station, ${_selectedDistrict?.districtName ?? ''}, ${_selectedState?.stateName ?? ''}';
     } else if (_selectedDistrict != null) {
       _locationName = _selectedDistrict!.districtName;
       _locationType = 'District, ${_selectedState?.stateName ?? ''}';
@@ -164,11 +165,13 @@ class _ChartsScreenState extends State<ChartsScreen> {
     // Generate dummy data for the selected month
     _chartData.clear();
     final daysInMonth = DateTime(_selectedYear, _selectedMonth + 1, 0).day;
-    
+
     for (int day = 1; day <= daysInMonth; day++) {
       // Generate realistic water level data between -5.0 and -12.0 meters
-      double value = -7.5 + (2.0 * (0.5 - (day % 7) / 14.0)) + 
-                    (1.5 * (0.5 - (day % 3) / 6.0));
+      double value =
+          -7.5 +
+          (2.0 * (0.5 - (day % 7) / 14.0)) +
+          (1.5 * (0.5 - (day % 3) / 6.0));
       _chartData.add(FlSpot(day.toDouble(), value));
     }
   }
@@ -189,10 +192,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -381,19 +381,37 @@ class _ChartsScreenState extends State<ChartsScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Year: $_selectedYear',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Year',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$_selectedYear',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -483,10 +501,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
               )
             : const Text(
                 'Look Up Trends',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
       ),
     );
@@ -614,11 +629,11 @@ class _ChartsScreenState extends State<ChartsScreen> {
                             show: true,
                             getDotPainter: (spot, percent, barData, index) =>
                                 FlDotCirclePainter(
-                              radius: 4,
-                              color: const Color(0xFF1565C0),
-                              strokeWidth: 2,
-                              strokeColor: Colors.white,
-                            ),
+                                  radius: 4,
+                                  color: const Color(0xFF1565C0),
+                                  strokeWidth: 2,
+                                  strokeColor: Colors.white,
+                                ),
                           ),
                           belowBarData: BarAreaData(
                             show: true,
@@ -643,8 +658,18 @@ class _ChartsScreenState extends State<ChartsScreen> {
 
   String _getMonthName(int month) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return months[month - 1];
   }
