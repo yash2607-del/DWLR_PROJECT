@@ -241,11 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: "Look Up Trends",
                           onTap: () => Navigator.pushNamed(context, '/charts'),
                         ),
-                        _buildEssentialItem(
-                          icon: Icons.waterfall_chart_outlined,
-                          label: "Waterfall Info",
-                          onTap: () => Navigator.pushNamed(context, '/about'),
-                        ),
+                        
                         _buildEssentialItem(
                           icon: Icons.analytics_outlined,
                           label: "Analytics",
