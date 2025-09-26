@@ -80,67 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showLanguageDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Select Language'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Text('🇺🇸', style: TextStyle(fontSize: 24)),
-                title: const Text('English'),
-                trailing: const Icon(Icons.check, color: Colors.blue),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showLanguageComingSoon('English');
-                },
-              ),
-              ListTile(
-                leading: const Text('🇮🇳', style: TextStyle(fontSize: 24)),
-                title: const Text('हिंदी (Hindi)'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showLanguageComingSoon('Hindi');
-                },
-              ),
-              ListTile(
-                leading: const Text('🇮🇳', style: TextStyle(fontSize: 24)),
-                title: const Text('বাংলা (Bengali)'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showLanguageComingSoon('Bengali');
-                },
-              ),
-              ListTile(
-                leading: const Text('🇮🇳', style: TextStyle(fontSize: 24)),
-                title: const Text('தமிழ் (Tamil)'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showLanguageComingSoon('Tamil');
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showLanguageComingSoon(String language) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$language language support coming soon!'),
-        backgroundColor: Colors.blue,
-      ),
-    );
+    Navigator.pushNamed(context, '/language');
   }
 
   Widget _buildFAQItem(String question, String answer) {
