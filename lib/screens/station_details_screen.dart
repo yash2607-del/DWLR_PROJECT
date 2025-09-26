@@ -16,10 +16,19 @@ class StationDetailsScreen extends StatefulWidget {
 class _StationDetailsScreenState extends State<StationDetailsScreen>
     with SingleTickerProviderStateMixin {
   WaterLevelData? _waterLevelData;
+
+  // Multiple dataset storage
+  MultiDatasetResult? _timeSeriesDatasets;
+  MultiDatasetResult? _monthlyDatasets;
+  MultiDatasetResult? _sixMonthsDatasets;
+  MultiDatasetResult? _customRangeDatasets;
+
+  // Backward compatibility - these will be populated from the multi-dataset results
   List<TimeSeriesDataPoint> _timeSeriesData = [];
   List<TimeSeriesDataPoint> _monthlyData = [];
   List<TimeSeriesDataPoint> _sixMonthsData = [];
   List<TimeSeriesDataPoint> _customRangeData = [];
+
   bool _isLoading = true;
   bool _isTimeSeriesLoading = false;
   bool _isMonthlyLoading = false;
@@ -69,6 +78,46 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     super.dispose();
   }
 
+  // Helper method to get selected dataset types
+  List<String> _getSelectedDatasetTypes() {
+    final List<String> selectedTypes = [];
+
+    if (_showGroundwaterLevel) {
+      selectedTypes.add(WaterLevelService.GROUNDWATER_DATASET);
+    }
+    if (_showRainfall) {
+      selectedTypes.add(WaterLevelService.RAINFALL_DATASET);
+    }
+    if (_showHumidity) {
+      selectedTypes.add(WaterLevelService.HUMIDITY_DATASET);
+    }
+    if (_showTemperature) {
+      selectedTypes.add(WaterLevelService.TEMPERATURE_DATASET);
+    }
+
+    return selectedTypes;
+  }
+
+  // Helper method to refresh all data when dataset selections change
+  void _refreshAllData() {
+    // Clear existing data
+    _timeSeriesDatasets = null;
+    _monthlyDatasets = null;
+    _sixMonthsDatasets = null;
+    _customRangeDatasets = null;
+    _timeSeriesData.clear();
+    _monthlyData.clear();
+    _sixMonthsData.clear();
+    _customRangeData.clear();
+
+    // Refresh data if we're on the Recent Data tab
+    if (_tabController.index == 1) {
+      _fetchTimeSeriesData();
+      _fetchMonthlyData();
+      _fetchSixMonthsData();
+    }
+  }
+
   Future<void> _fetchWaterLevelData() async {
     setState(() {
       _isLoading = true;
@@ -102,14 +151,25 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     });
 
     try {
-      final data = await WaterLevelService.fetchWeeklyData(
+      final selectedTypes = _getSelectedDatasetTypes();
+      final datasets = await WaterLevelService.fetchMultipleDatasets(
         widget.station.stationCode,
+        days: 8,
+        datasetTypes: selectedTypes,
       );
 
       setState(() {
-        _timeSeriesData = data;
+        _timeSeriesDatasets = datasets;
+        // For backward compatibility, use groundwater data as default
+        _timeSeriesData = datasets.getGroundwaterData();
         _isTimeSeriesLoading = false;
-        if (data.isEmpty) {
+
+        // Check if any dataset has data
+        final hasAnyData = selectedTypes.any(
+          (type) => datasets.datasets[type]?.isNotEmpty ?? false,
+        );
+
+        if (!hasAnyData) {
           _timeSeriesErrorMessage = 'No recent data available for this station';
         }
       });
@@ -128,14 +188,25 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     });
 
     try {
-      final data = await WaterLevelService.fetchMonthlyData(
+      final selectedTypes = _getSelectedDatasetTypes();
+      final datasets = await WaterLevelService.fetchMultipleDatasets(
         widget.station.stationCode,
+        days: 30,
+        datasetTypes: selectedTypes,
       );
 
       setState(() {
-        _monthlyData = data;
+        _monthlyDatasets = datasets;
+        // For backward compatibility, use groundwater data as default
+        _monthlyData = datasets.getGroundwaterData();
         _isMonthlyLoading = false;
-        if (data.isEmpty) {
+
+        // Check if any dataset has data
+        final hasAnyData = selectedTypes.any(
+          (type) => datasets.datasets[type]?.isNotEmpty ?? false,
+        );
+
+        if (!hasAnyData) {
           _monthlyErrorMessage = 'No monthly data available for this station';
         }
       });
@@ -154,14 +225,25 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     });
 
     try {
-      final data = await WaterLevelService.fetchSixMonthsData(
+      final selectedTypes = _getSelectedDatasetTypes();
+      final datasets = await WaterLevelService.fetchMultipleDatasets(
         widget.station.stationCode,
+        days: 90,
+        datasetTypes: selectedTypes,
       );
 
       setState(() {
-        _sixMonthsData = data;
+        _sixMonthsDatasets = datasets;
+        // For backward compatibility, use groundwater data as default
+        _sixMonthsData = datasets.getGroundwaterData();
         _isSixMonthsLoading = false;
-        if (data.isEmpty) {
+
+        // Check if any dataset has data
+        final hasAnyData = selectedTypes.any(
+          (type) => datasets.datasets[type]?.isNotEmpty ?? false,
+        );
+
+        if (!hasAnyData) {
           _sixMonthsErrorMessage = 'No 6-month data available for this station';
         }
       });
@@ -203,16 +285,26 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     });
 
     try {
-      final data = await WaterLevelService.fetchCustomRangeData(
+      final selectedTypes = _getSelectedDatasetTypes();
+      final datasets = await WaterLevelService.fetchMultipleDatasets(
         widget.station.stationCode,
-        _startDate!,
-        _endDate!,
+        customStartDate: _startDate!,
+        customEndDate: _endDate!,
+        datasetTypes: selectedTypes,
       );
 
       setState(() {
-        _customRangeData = data;
+        _customRangeDatasets = datasets;
+        // For backward compatibility, use groundwater data as default
+        _customRangeData = datasets.getGroundwaterData();
         _isCustomRangeLoading = false;
-        if (data.isEmpty) {
+
+        // Check if any dataset has data
+        final hasAnyData = selectedTypes.any(
+          (type) => datasets.datasets[type]?.isNotEmpty ?? false,
+        );
+
+        if (!hasAnyData) {
           _customRangeErrorMessage =
               'No data available for the selected date range';
         }
@@ -598,42 +690,78 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
           if (_isCustomDateMode)
             _buildCustomRangeChart()
           else ...[
-            // Last 7 Days Chart
-            _buildChartSection(
-              title: 'Recent Data (Last 7 Days)',
-              icon: Icons.timeline,
-              data: _timeSeriesData,
-              isLoading: _isTimeSeriesLoading,
-              errorMessage: _timeSeriesErrorMessage,
-              onRetry: _fetchTimeSeriesData,
-              color: Colors.blue,
-            ),
+            // Check if multiple dataset types are selected
+            if (_getSelectedDatasetTypes().length > 1) ...[
+              // Use multi-dataset charts when multiple types are selected
+              _buildMultiDatasetChartSection(
+                title: 'Recent Data (Last 7 Days)',
+                icon: Icons.timeline,
+                datasets: _timeSeriesDatasets,
+                isLoading: _isTimeSeriesLoading,
+                errorMessage: _timeSeriesErrorMessage,
+                onRetry: _fetchTimeSeriesData,
+                color: Colors.blue,
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Last 1 Month Chart
-            _buildChartSection(
-              title: 'Monthly Trend (Last 30 Days)',
-              icon: Icons.calendar_month,
-              data: _monthlyData,
-              isLoading: _isMonthlyLoading,
-              errorMessage: _monthlyErrorMessage,
-              onRetry: _fetchMonthlyData,
-              color: Colors.green,
-            ),
+              _buildMultiDatasetChartSection(
+                title: 'Monthly Trend (Last 30 Days)',
+                icon: Icons.calendar_month,
+                datasets: _monthlyDatasets,
+                isLoading: _isMonthlyLoading,
+                errorMessage: _monthlyErrorMessage,
+                onRetry: _fetchMonthlyData,
+                color: Colors.green,
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Last 6 Months Chart
-            _buildChartSection(
-              title: 'Long-term Trend (Last 6 Months)',
-              icon: Icons.show_chart,
-              data: _sixMonthsData,
-              isLoading: _isSixMonthsLoading,
-              errorMessage: _sixMonthsErrorMessage,
-              onRetry: _fetchSixMonthsData,
-              color: Colors.purple,
-            ),
+              _buildMultiDatasetChartSection(
+                title: 'Long-term Trend (Last 6 Months)',
+                icon: Icons.show_chart,
+                datasets: _sixMonthsDatasets,
+                isLoading: _isSixMonthsLoading,
+                errorMessage: _sixMonthsErrorMessage,
+                onRetry: _fetchSixMonthsData,
+                color: Colors.purple,
+              ),
+            ] else ...[
+              // Use single-dataset charts when only one type is selected
+              _buildChartSection(
+                title: 'Recent Data (Last 7 Days)',
+                icon: Icons.timeline,
+                data: _timeSeriesData,
+                isLoading: _isTimeSeriesLoading,
+                errorMessage: _timeSeriesErrorMessage,
+                onRetry: _fetchTimeSeriesData,
+                color: Colors.blue,
+              ),
+
+              const SizedBox(height: 16),
+
+              _buildChartSection(
+                title: 'Monthly Trend (Last 30 Days)',
+                icon: Icons.calendar_month,
+                data: _monthlyData,
+                isLoading: _isMonthlyLoading,
+                errorMessage: _monthlyErrorMessage,
+                onRetry: _fetchMonthlyData,
+                color: Colors.green,
+              ),
+
+              const SizedBox(height: 16),
+
+              _buildChartSection(
+                title: 'Long-term Trend (Last 6 Months)',
+                icon: Icons.show_chart,
+                data: _sixMonthsData,
+                isLoading: _isSixMonthsLoading,
+                errorMessage: _sixMonthsErrorMessage,
+                onRetry: _fetchSixMonthsData,
+                color: Colors.purple,
+              ),
+            ],
           ],
         ],
       ),
@@ -733,6 +861,102 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                 borderRadius: BorderRadius.circular(8),
                 child: _buildChart(data, color),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMultiDatasetChartSection({
+    required String title,
+    required IconData icon,
+    required MultiDatasetResult? datasets,
+    required bool isLoading,
+    required String? errorMessage,
+    required VoidCallback onRetry,
+    required Color color,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            if (isLoading)
+              SizedBox(
+                height: 200,
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Loading data...'),
+                    ],
+                  ),
+                ),
+              )
+            else if (errorMessage != null)
+              SizedBox(
+                height: 200,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 48,
+                        color: Colors.red.shade400,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        errorMessage,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: onRetry,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (datasets == null ||
+                datasets.datasets.values.every((data) => data.isEmpty))
+              Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: const Center(child: Text('No data to display')),
+              )
+            else
+              _buildMultiDatasetChart(datasets, title),
           ],
         ),
       ),
@@ -1152,6 +1376,310 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     );
   }
 
+  Widget _buildMultiDatasetChart(MultiDatasetResult? datasets, String title) {
+    if (datasets == null) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Center(child: Text('No data to display')),
+      );
+    }
+
+    // Define colors for different dataset types
+    final datasetColors = {
+      WaterLevelService.GROUNDWATER_DATASET: Colors.blue,
+      WaterLevelService.RAINFALL_DATASET: Colors.green,
+      WaterLevelService.HUMIDITY_DATASET: Colors.orange,
+      WaterLevelService.TEMPERATURE_DATASET: Colors.red,
+    };
+
+    final datasetNames = {
+      WaterLevelService.GROUNDWATER_DATASET: 'Groundwater Level',
+      WaterLevelService.RAINFALL_DATASET: 'Rainfall',
+      WaterLevelService.HUMIDITY_DATASET: 'Humidity',
+      WaterLevelService.TEMPERATURE_DATASET: 'Temperature',
+    };
+
+    // Collect all line data for display
+    List<LineChartBarData> lineBarsData = [];
+    List<TimeSeriesDataPoint> allDataPoints = [];
+
+    // Process each dataset that has data
+    datasets.datasets.forEach((datasetType, data) {
+      if (data.isNotEmpty) {
+        final aggregatedData = _aggregateDataPoints(data);
+        allDataPoints.addAll(aggregatedData);
+
+        final spots = <FlSpot>[];
+        for (int i = 0; i < aggregatedData.length; i++) {
+          final dataPoint = aggregatedData[i];
+          final value = double.tryParse(dataPoint.dataValue) ?? 0.0;
+          spots.add(FlSpot(i.toDouble(), value));
+        }
+
+        if (spots.isNotEmpty) {
+          lineBarsData.add(
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              color: datasetColors[datasetType] ?? Colors.grey,
+              barWidth: 2,
+              isStrokeCapRound: true,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (spot, percent, barData, index) {
+                  return FlDotCirclePainter(
+                    radius: 3,
+                    color: datasetColors[datasetType] ?? Colors.grey,
+                    strokeWidth: 1,
+                    strokeColor: Colors.white,
+                  );
+                },
+              ),
+              belowBarData: BarAreaData(
+                show: false, // Disable area fill for multiple datasets
+              ),
+            ),
+          );
+        }
+      }
+    });
+
+    if (lineBarsData.isEmpty) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Center(child: Text('No data to display')),
+      );
+    }
+
+    // Calculate Y-axis range from all datasets
+    final allValues = lineBarsData
+        .expand((lineData) => lineData.spots)
+        .map((spot) => spot.y)
+        .toList();
+
+    final minY = allValues.reduce((a, b) => a < b ? a : b);
+    final maxY = allValues.reduce((a, b) => a > b ? a : b);
+    final range = maxY - minY;
+    final padding = range * 0.1;
+
+    return Container(
+      height: 350, // Slightly taller for legend
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title and legend
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              Icon(Icons.fullscreen, color: Colors.grey[600], size: 20),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Legend
+          Wrap(
+            spacing: 16,
+            children: datasets.datasets.entries
+                .where((entry) => entry.value.isNotEmpty)
+                .map((entry) {
+                  final datasetType = entry.key;
+                  final color = datasetColors[datasetType] ?? Colors.grey;
+                  final name = datasetNames[datasetType] ?? datasetType;
+
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  );
+                })
+                .toList(),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Chart
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: true,
+                  horizontalInterval: range > 0 ? range / 5 : 1,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(color: Colors.grey.shade300, strokeWidth: 1);
+                  },
+                  getDrawingVerticalLine: (value) {
+                    return FlLine(color: Colors.grey.shade300, strokeWidth: 1);
+                  },
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      getTitlesWidget: (double value, TitleMeta meta) {
+                        // Use the first available dataset for date labels
+                        final firstDataset = datasets.datasets.values
+                            .firstWhere(
+                              (data) => data.isNotEmpty,
+                              orElse: () => [],
+                            );
+                        if (firstDataset.isNotEmpty) {
+                          final aggregatedData = _aggregateDataPoints(
+                            firstDataset,
+                          );
+                          final index = value.toInt();
+                          if (index >= 0 && index < aggregatedData.length) {
+                            final date = aggregatedData[index].dateTime;
+                            final label = _getChartDateLabel(
+                              firstDataset,
+                              date,
+                            );
+                            return SideTitleWidget(
+                              axisSide: meta.axisSide,
+                              child: Text(
+                                label,
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: range > 0 ? range / 4 : 1,
+                      reservedSize: 42,
+                      getTitlesWidget: (double value, TitleMeta meta) {
+                        return Text(
+                          value.toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border.all(color: Colors.grey.shade400, width: 1),
+                ),
+                minY: minY - padding,
+                maxY: maxY + padding,
+                lineBarsData: lineBarsData,
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+                      return touchedBarSpots.map((barSpot) {
+                        // Find which dataset this spot belongs to
+                        int datasetIndex = 0;
+                        for (int i = 0; i < lineBarsData.length; i++) {
+                          if (lineBarsData[i].spots.contains(
+                            barSpot.barIndex,
+                          )) {
+                            datasetIndex = i;
+                            break;
+                          }
+                        }
+
+                        final datasetEntries = datasets.datasets.entries
+                            .where((entry) => entry.value.isNotEmpty)
+                            .toList();
+
+                        if (datasetIndex < datasetEntries.length) {
+                          final datasetType = datasetEntries[datasetIndex].key;
+                          final data = datasetEntries[datasetIndex].value;
+                          final aggregatedData = _aggregateDataPoints(data);
+                          final index = barSpot.x.toInt();
+
+                          if (index >= 0 && index < aggregatedData.length) {
+                            final dataPoint = aggregatedData[index];
+                            final datasetName =
+                                datasetNames[datasetType] ?? datasetType;
+                            final tooltipText =
+                                '$datasetName\n${_getTooltipText(data, dataPoint)}';
+                            return LineTooltipItem(
+                              tooltipText,
+                              TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            );
+                          }
+                        }
+                        return null;
+                      }).toList();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day.toString().padLeft(2, '0')}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
@@ -1477,6 +2005,8 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   setState(() {
                     _showRainfall = value ?? false;
                   });
+                  // Refresh data when selection changes
+                  _refreshAllData();
                 },
                 activeColor: Colors.blue.shade600,
               ),
@@ -1517,6 +2047,8 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   setState(() {
                     _showHumidity = value ?? false;
                   });
+                  // Refresh data when selection changes
+                  _refreshAllData();
                 },
                 activeColor: Colors.blue.shade600,
               ),
@@ -1557,6 +2089,8 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   setState(() {
                     _showTemperature = value ?? false;
                   });
+                  // Refresh data when selection changes
+                  _refreshAllData();
                 },
                 activeColor: Colors.blue.shade600,
               ),
@@ -1683,7 +2217,10 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   ),
                 ),
               )
-            else if (_customRangeData.isEmpty)
+            else if (_customRangeDatasets == null ||
+                _customRangeDatasets!.datasets.values.every(
+                  (data) => data.isEmpty,
+                ))
               Container(
                 height: 200,
                 decoration: BoxDecoration(
@@ -1693,6 +2230,10 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                 ),
                 child: const Center(child: Text('No data to display')),
               )
+            else
+            // Use multi-dataset chart if multiple types are selected, otherwise single chart
+            if (_getSelectedDatasetTypes().length > 1)
+              _buildMultiDatasetChart(_customRangeDatasets, title)
             else
               InkWell(
                 onTap: () => _openFullScreenChart(
