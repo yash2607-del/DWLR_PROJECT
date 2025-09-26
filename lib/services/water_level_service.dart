@@ -60,20 +60,14 @@ class TimeSeriesDataPoint {
   final String dataValue;
   final String unitCode;
   final String? dataTypeDescription;
-  final String datasetType; // Added to identify the dataset type
-
   TimeSeriesDataPoint({
     required this.dateTime,
     required this.dataValue,
     required this.unitCode,
     this.dataTypeDescription,
-    this.datasetType = 'GWATERLVL', // Default to groundwater
   });
 
-  factory TimeSeriesDataPoint.fromJson(
-    Map<String, dynamic> json, {
-    String datasetType = 'GWATERLVL',
-  }) {
+  factory TimeSeriesDataPoint.fromJson(Map<String, dynamic> json) {
     return TimeSeriesDataPoint(
       dateTime:
           DateTime.tryParse(json['dataTime']?.toString() ?? '') ??
@@ -81,25 +75,8 @@ class TimeSeriesDataPoint {
       dataValue: json['dataValue']?.toString() ?? 'N/A',
       unitCode: json['unitCode']?.toString() ?? '',
       dataTypeDescription: json['datatypeDescription']?.toString(),
-      datasetType: datasetType,
     );
   }
-}
-
-// Class to hold multiple dataset results
-class MultiDatasetResult {
-  final Map<String, List<TimeSeriesDataPoint>> datasets;
-
-  MultiDatasetResult({required this.datasets});
-
-  List<TimeSeriesDataPoint> getGroundwaterData() =>
-      datasets[WaterLevelService.GROUNDWATER_DATASET] ?? [];
-  List<TimeSeriesDataPoint> getRainfallData() =>
-      datasets[WaterLevelService.RAINFALL_DATASET] ?? [];
-  List<TimeSeriesDataPoint> getHumidityData() =>
-      datasets[WaterLevelService.HUMIDITY_DATASET] ?? [];
-  List<TimeSeriesDataPoint> getTemperatureData() =>
-      datasets[WaterLevelService.TEMPERATURE_DATASET] ?? [];
 }
 
 class WaterLevelService {
@@ -107,12 +84,6 @@ class WaterLevelService {
       'https://indiawris.gov.in/stationMaster/getMasterStationsList';
   static const String _timeSeriesUrl =
       'https://indiawris.gov.in/CommonDataSetMasterAPI/getCommonDataSetByStationCode';
-
-  // Dataset codes for different data types
-  static const String GROUNDWATER_DATASET = 'GWATERLVL';
-  static const String RAINFALL_DATASET = 'RAINF';
-  static const String HUMIDITY_DATASET = 'HUMID';
-  static const String TEMPERATURE_DATASET = 'MT_TEMP';
 
   static Future<WaterLevelData?> fetchWaterLevelData(String stationCode) async {
     try {
@@ -176,138 +147,6 @@ class WaterLevelService {
     } catch (e) {
       print('Error fetching water level data: $e');
       return null;
-    }
-  }
-
-  // New method to fetch multiple datasets based on selected types
-  static Future<MultiDatasetResult> fetchMultipleDatasets(
-    String stationCode, {
-    int days = 8,
-    DateTime? customStartDate,
-    DateTime? customEndDate,
-    required List<String> datasetTypes,
-  }) async {
-    final Map<String, List<TimeSeriesDataPoint>> results = {};
-
-    for (String datasetType in datasetTypes) {
-      try {
-        final data = await _fetchSingleDatasetTimeSeries(
-          stationCode,
-          datasetType,
-          days: days,
-          customStartDate: customStartDate,
-          customEndDate: customEndDate,
-        );
-        results[datasetType] = data;
-      } catch (e) {
-        print('Error fetching data for dataset $datasetType: $e');
-        results[datasetType] = [];
-      }
-    }
-
-    return MultiDatasetResult(datasets: results);
-  }
-
-  // Private method to fetch single dataset time series
-  static Future<List<TimeSeriesDataPoint>> _fetchSingleDatasetTimeSeries(
-    String stationCode,
-    String datasetType, {
-    int days = 8,
-    DateTime? customStartDate,
-    DateTime? customEndDate,
-  }) async {
-    try {
-      // Calculate dates
-      DateTime startTime, endTime;
-
-      if (customStartDate != null && customEndDate != null) {
-        startTime = customStartDate;
-        endTime = customEndDate;
-      } else {
-        endTime = DateTime.now().subtract(const Duration(days: 1));
-        startTime = endTime.subtract(Duration(days: days));
-      }
-
-      // Format dates as required by the API (YYYY-MM-DD)
-      final String startTimeStr = _formatDate(startTime);
-      final String endTimeStr = _formatDate(endTime);
-
-      final requestBody = {
-        'station_code': stationCode,
-        'starttime': startTimeStr,
-        'endtime': endTimeStr,
-        'dataset': datasetType,
-      };
-
-      print('Fetching $datasetType data for station: $stationCode');
-      print('Date range: $startTimeStr to $endTimeStr');
-      print('Request body: ${jsonEncode(requestBody)}');
-
-      final response = await http.post(
-        Uri.parse(_timeSeriesUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(requestBody),
-      );
-
-      print('$datasetType response status: ${response.statusCode}');
-      print('$datasetType response body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final jsonData = jsonDecode(response.body);
-
-        List<dynamic> dataList = [];
-
-        // Handle different response formats
-        if (jsonData is Map<String, dynamic>) {
-          if (jsonData.containsKey('data') && jsonData['data'] != null) {
-            final dataField = jsonData['data'];
-            if (dataField is List) {
-              dataList = dataField;
-            } else if (dataField is Map) {
-              // If data is a single object, wrap it in a list
-              dataList = [dataField];
-            }
-          } else if (jsonData.containsKey('dataset') &&
-              jsonData['dataset'] is List) {
-            dataList = jsonData['dataset'];
-          }
-        } else if (jsonData is List) {
-          dataList = jsonData;
-        }
-
-        // Convert to TimeSeriesDataPoint objects
-        final List<TimeSeriesDataPoint> timeSeriesData = [];
-        for (final item in dataList) {
-          if (item is Map<String, dynamic>) {
-            try {
-              final dataPoint = TimeSeriesDataPoint.fromJson(
-                item,
-                datasetType: datasetType,
-              );
-              timeSeriesData.add(dataPoint);
-            } catch (e) {
-              print('Error parsing data point for $datasetType: $e');
-            }
-          }
-        }
-
-        // Sort by date (newest first)
-        timeSeriesData.sort((a, b) => b.dateTime.compareTo(a.dateTime));
-
-        print('Parsed ${timeSeriesData.length} $datasetType data points');
-        return timeSeriesData;
-      } else {
-        print(
-          'Failed to fetch $datasetType data: ${response.statusCode} - ${response.body}',
-        );
-        return [];
-      }
-    } catch (e) {
-      print('Error fetching $datasetType data: $e');
-      return [];
     }
   }
 
