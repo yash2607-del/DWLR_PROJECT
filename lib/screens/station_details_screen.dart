@@ -715,6 +715,230 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
     );
   }
 
+  List<TimeSeriesDataPoint> _aggregateDataPoints(
+    List<TimeSeriesDataPoint> data,
+  ) {
+    if (data.isEmpty) return data;
+
+    // Sort data by date first
+    final sortedData = List<TimeSeriesDataPoint>.from(data)
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+    // Calculate date range
+    final firstDate = sortedData.first.dateTime;
+    final lastDate = sortedData.last.dateTime;
+    final daysDifference = lastDate.difference(firstDate).inDays;
+
+    // If less than 10 days, return as is
+    if (daysDifference < 10) {
+      return sortedData;
+    }
+
+    // Group data based on duration
+    if (daysDifference <= 60) {
+      // 10 days to 2 months - group by day
+      return _groupByDay(sortedData);
+    } else if (daysDifference <= 365) {
+      // 2 months to 1 year - group by week
+      return _groupByWeek(sortedData);
+    } else {
+      // More than 1 year - group by month
+      return _groupByMonth(sortedData);
+    }
+  }
+
+  List<TimeSeriesDataPoint> _groupByDay(List<TimeSeriesDataPoint> data) {
+    final Map<String, List<TimeSeriesDataPoint>> groupedData = {};
+
+    for (final point in data) {
+      final dayKey =
+          '${point.dateTime.year}-${point.dateTime.month.toString().padLeft(2, '0')}-${point.dateTime.day.toString().padLeft(2, '0')}';
+      if (!groupedData.containsKey(dayKey)) {
+        groupedData[dayKey] = [];
+      }
+      groupedData[dayKey]!.add(point);
+    }
+
+    return groupedData.entries.map((entry) {
+      final dayData = entry.value;
+      final averageValue = _calculateAverage(dayData);
+      final representativeDate = dayData.first.dateTime;
+
+      return TimeSeriesDataPoint(
+        dateTime: DateTime(
+          representativeDate.year,
+          representativeDate.month,
+          representativeDate.day,
+          12,
+        ), // Use noon as representative time
+        dataValue: averageValue.toStringAsFixed(2),
+        unitCode: dayData.first.unitCode,
+        dataTypeDescription: dayData.first.dataTypeDescription,
+      );
+    }).toList()..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+  }
+
+  List<TimeSeriesDataPoint> _groupByWeek(List<TimeSeriesDataPoint> data) {
+    final Map<int, List<TimeSeriesDataPoint>> groupedData = {};
+
+    for (final point in data) {
+      // Calculate week number since epoch
+      final daysSinceEpoch = point.dateTime
+          .difference(DateTime(1970, 1, 1))
+          .inDays;
+      final weekNumber = daysSinceEpoch ~/ 7;
+
+      if (!groupedData.containsKey(weekNumber)) {
+        groupedData[weekNumber] = [];
+      }
+      groupedData[weekNumber]!.add(point);
+    }
+
+    return groupedData.entries.map((entry) {
+      final weekData = entry.value;
+      final averageValue = _calculateAverage(weekData);
+      // Use the middle of the week as representative date
+      final firstDate = weekData.first.dateTime;
+      final weekStart = firstDate.subtract(
+        Duration(days: firstDate.weekday - 1),
+      );
+      final representativeDate = weekStart.add(Duration(days: 3)); // Wednesday
+
+      return TimeSeriesDataPoint(
+        dateTime: representativeDate,
+        dataValue: averageValue.toStringAsFixed(2),
+        unitCode: weekData.first.unitCode,
+        dataTypeDescription: weekData.first.dataTypeDescription,
+      );
+    }).toList()..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+  }
+
+  List<TimeSeriesDataPoint> _groupByMonth(List<TimeSeriesDataPoint> data) {
+    final Map<String, List<TimeSeriesDataPoint>> groupedData = {};
+
+    for (final point in data) {
+      final monthKey =
+          '${point.dateTime.year}-${point.dateTime.month.toString().padLeft(2, '0')}';
+      if (!groupedData.containsKey(monthKey)) {
+        groupedData[monthKey] = [];
+      }
+      groupedData[monthKey]!.add(point);
+    }
+
+    return groupedData.entries.map((entry) {
+      final monthData = entry.value;
+      final averageValue = _calculateAverage(monthData);
+      final firstDate = monthData.first.dateTime;
+      final representativeDate = DateTime(
+        firstDate.year,
+        firstDate.month,
+        15,
+      ); // Use middle of month
+
+      return TimeSeriesDataPoint(
+        dateTime: representativeDate,
+        dataValue: averageValue.toStringAsFixed(2),
+        unitCode: monthData.first.unitCode,
+        dataTypeDescription: monthData.first.dataTypeDescription,
+      );
+    }).toList()..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+  }
+
+  double _calculateAverage(List<TimeSeriesDataPoint> dataPoints) {
+    double sum = 0.0;
+    int validCount = 0;
+
+    for (final point in dataPoints) {
+      final value = double.tryParse(point.dataValue);
+      if (value != null && !value.isNaN) {
+        sum += value;
+        validCount++;
+      }
+    }
+
+    return validCount > 0 ? sum / validCount : 0.0;
+  }
+
+  String _getChartDateLabel(
+    List<TimeSeriesDataPoint> originalData,
+    DateTime date,
+  ) {
+    if (originalData.isEmpty) return '';
+
+    // Calculate date range to determine appropriate label format
+    final sortedData = List<TimeSeriesDataPoint>.from(originalData)
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    final firstDate = sortedData.first.dateTime;
+    final lastDate = sortedData.last.dateTime;
+    final daysDifference = lastDate.difference(firstDate).inDays;
+
+    if (daysDifference < 10) {
+      // Less than 10 days - show day/month and time
+      return '${date.day}/${date.month}\n${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (daysDifference <= 60) {
+      // 10 days to 2 months - show day/month
+      return '${date.day}/${date.month}';
+    } else if (daysDifference <= 365) {
+      // 2 months to 1 year - show week info
+      return 'W${_getWeekNumber(date)}\n${date.day}/${date.month}';
+    } else {
+      // More than 1 year - show month/year
+      return '${_getMonthName(date.month)}\n${date.year}';
+    }
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[month];
+  }
+
+  int _getWeekNumber(DateTime date) {
+    final dayOfYear = date.difference(DateTime(date.year, 1, 1)).inDays + 1;
+    return (dayOfYear / 7).ceil();
+  }
+
+  String _getTooltipText(
+    List<TimeSeriesDataPoint> originalData,
+    TimeSeriesDataPoint dataPoint,
+  ) {
+    if (originalData.isEmpty) return '';
+
+    // Calculate date range to determine appropriate tooltip format
+    final sortedData = List<TimeSeriesDataPoint>.from(originalData)
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    final firstDate = sortedData.first.dateTime;
+    final lastDate = sortedData.last.dateTime;
+    final daysDifference = lastDate.difference(firstDate).inDays;
+
+    if (daysDifference < 10) {
+      // Less than 10 days - show exact date and time
+      return '${_formatDateTime(dataPoint.dateTime)}\n${dataPoint.dataValue} ${dataPoint.unitCode}';
+    } else if (daysDifference <= 60) {
+      // 10 days to 2 months - show day average
+      return 'Daily Avg: ${_formatDateOnly(dataPoint.dateTime)}\n${dataPoint.dataValue} ${dataPoint.unitCode}';
+    } else if (daysDifference <= 365) {
+      // 2 months to 1 year - show weekly average
+      return 'Weekly Avg: Week ${_getWeekNumber(dataPoint.dateTime)}\n${_formatDateOnly(dataPoint.dateTime)}\n${dataPoint.dataValue} ${dataPoint.unitCode}';
+    } else {
+      // More than 1 year - show monthly average
+      return 'Monthly Avg: ${_getMonthName(dataPoint.dateTime.month)} ${dataPoint.dateTime.year}\n${dataPoint.dataValue} ${dataPoint.unitCode}';
+    }
+  }
+
   Widget _buildChart(List<TimeSeriesDataPoint> data, Color color) {
     if (data.isEmpty) {
       return Container(
@@ -728,13 +952,14 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
       );
     }
 
+    // Aggregate data points based on date range
+    final aggregatedData = _aggregateDataPoints(data);
+
     // Prepare data points for the chart
     final spots = <FlSpot>[];
-    final sortedData = List<TimeSeriesDataPoint>.from(data)
-      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
 
-    for (int i = 0; i < sortedData.length; i++) {
-      final dataPoint = sortedData[i];
+    for (int i = 0; i < aggregatedData.length; i++) {
+      final dataPoint = aggregatedData[i];
       final value = double.tryParse(dataPoint.dataValue) ?? 0.0;
       spots.add(FlSpot(i.toDouble(), value));
     }
@@ -803,12 +1028,13 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                       interval: spots.length > 6 ? spots.length / 4 : 1,
                       getTitlesWidget: (double value, TitleMeta meta) {
                         final index = value.toInt();
-                        if (index >= 0 && index < sortedData.length) {
-                          final date = sortedData[index].dateTime;
+                        if (index >= 0 && index < aggregatedData.length) {
+                          final date = aggregatedData[index].dateTime;
+                          final label = _getChartDateLabel(data, date);
                           return SideTitleWidget(
                             axisSide: meta.axisSide,
                             child: Text(
-                              '${date.day}/${date.month}',
+                              label,
                               style: const TextStyle(
                                 color: Colors.grey,
                                 fontWeight: FontWeight.bold,
@@ -877,10 +1103,11 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                     getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
                       return touchedBarSpots.map((barSpot) {
                         final index = barSpot.x.toInt();
-                        if (index >= 0 && index < sortedData.length) {
-                          final dataPoint = sortedData[index];
+                        if (index >= 0 && index < aggregatedData.length) {
+                          final dataPoint = aggregatedData[index];
+                          final tooltipText = _getTooltipText(data, dataPoint);
                           return LineTooltipItem(
-                            '${_formatDateTime(dataPoint.dateTime)}\n${dataPoint.dataValue} ${dataPoint.unitCode}',
+                            tooltipText,
                             const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
