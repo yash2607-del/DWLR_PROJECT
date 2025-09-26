@@ -35,6 +35,12 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
   DateTime? _endDate;
   late TabController _tabController;
 
+  // Dataset options
+  bool _showGroundwaterLevel = true; // Always checked and disabled
+  bool _showRainfall = false;
+  bool _showHumidity = false;
+  bool _showTemperature = false;
+
   @override
   void initState() {
     super.initState();
@@ -564,6 +570,24 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
                   const SizedBox(height: 20),
                   _buildCustomDateRangeSelector(),
                 ],
+
+                // Dataset Options Section
+                const SizedBox(height: 20),
+                Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        Colors.grey.shade300,
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _buildDatasetOptions(),
               ],
             ),
           ),
@@ -1392,6 +1416,175 @@ class _StationDetailsScreenState extends State<StationDetailsScreen>
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _buildDatasetOptions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.dataset, color: Colors.blue.shade600, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'Dataset Options',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Groundwater Level (always checked, disabled)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            children: [
+              Checkbox(
+                value: _showGroundwaterLevel,
+                onChanged: null, // Disabled
+                activeColor: Colors.blue.shade600,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Groundwater Level',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+              Icon(Icons.lock, size: 16, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
+
+        // Rainfall
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            children: [
+              Checkbox(
+                value: _showRainfall,
+                onChanged: (value) {
+                  setState(() {
+                    _showRainfall = value ?? false;
+                  });
+                },
+                activeColor: Colors.blue.shade600,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Rainfall',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _showRainfall
+                        ? Colors.black87
+                        : Colors.grey.shade600,
+                  ),
+                ),
+              ),
+              if (!_showRainfall)
+                Text(
+                  'Coming Soon',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Humidity
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            children: [
+              Checkbox(
+                value: _showHumidity,
+                onChanged: (value) {
+                  setState(() {
+                    _showHumidity = value ?? false;
+                  });
+                },
+                activeColor: Colors.blue.shade600,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Humidity',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _showHumidity
+                        ? Colors.black87
+                        : Colors.grey.shade600,
+                  ),
+                ),
+              ),
+              if (!_showHumidity)
+                Text(
+                  'Coming Soon',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Temperature
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            children: [
+              Checkbox(
+                value: _showTemperature,
+                onChanged: (value) {
+                  setState(() {
+                    _showTemperature = value ?? false;
+                  });
+                },
+                activeColor: Colors.blue.shade600,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Temperature',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _showTemperature
+                        ? Colors.black87
+                        : Colors.grey.shade600,
+                  ),
+                ),
+              ),
+              if (!_showTemperature)
+                Text(
+                  'Coming Soon',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
