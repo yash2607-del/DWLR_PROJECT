@@ -1,7 +1,170 @@
 import 'package:flutter/material.dart';
+import '../widgets/custom_bottom_nav.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _currentIndex = 0;
+
+  void _onBottomNavTap(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+
+    switch (index) {
+      case 0:
+        // Already on Home, do nothing
+        break;
+      case 1:
+        Navigator.pushNamed(context, '/map');
+        break;
+      case 2:
+        _showFAQsDialog();
+        break;
+      case 3:
+        Navigator.pushNamed(context, '/stations');
+        break;
+      case 4:
+        _showLanguageDialog();
+        break;
+    }
+  }
+
+  void _showFAQsDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Frequently Asked Questions'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildFAQItem(
+                  'What is groundwater monitoring?',
+                  'Groundwater monitoring involves tracking water levels, quality, and flow in underground aquifers to ensure sustainable water resource management.',
+                ),
+                const SizedBox(height: 16),
+                _buildFAQItem(
+                  'How often is data updated?',
+                  'Water level data is typically updated every 15 minutes from automated monitoring stations across the region.',
+                ),
+                const SizedBox(height: 16),
+                _buildFAQItem(
+                  'How to read water level trends?',
+                  'Rising trends indicate water recharge, while declining trends may suggest over-extraction or drought conditions.',
+                ),
+                const SizedBox(height: 16),
+                _buildFAQItem(
+                  'What do the different station types mean?',
+                  'Monitoring wells track water levels, Deep wells monitor deeper aquifers, and Urban wells focus on city water supplies.',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showLanguageDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select Language'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Text('🇺🇸', style: TextStyle(fontSize: 24)),
+                title: const Text('English'),
+                trailing: const Icon(Icons.check, color: Colors.blue),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showLanguageComingSoon('English');
+                },
+              ),
+              ListTile(
+                leading: const Text('🇮🇳', style: TextStyle(fontSize: 24)),
+                title: const Text('हिंदी (Hindi)'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showLanguageComingSoon('Hindi');
+                },
+              ),
+              ListTile(
+                leading: const Text('🇮🇳', style: TextStyle(fontSize: 24)),
+                title: const Text('বাংলা (Bengali)'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showLanguageComingSoon('Bengali');
+                },
+              ),
+              ListTile(
+                leading: const Text('🇮🇳', style: TextStyle(fontSize: 24)),
+                title: const Text('தமிழ் (Tamil)'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showLanguageComingSoon('Tamil');
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showLanguageComingSoon(String language) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$language language support coming soon!'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
+  Widget _buildFAQItem(String question, String answer) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          question,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          answer,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -230,26 +393,9 @@ class HomeScreen extends StatelessWidget {
           ),
         ), // Closes SingleChildScrollView
       ), // Closes SafeArea
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF1565C0),
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.qr_code_scanner),
-            label: 'Scan Data',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance),
-            label: 'Stations',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            label: 'Info',
-          ),
-        ],
+      bottomNavigationBar: CustomBottomNav(
+        currentIndex: _currentIndex,
+        onTap: _onBottomNavTap,
       ),
     );
   }
